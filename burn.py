@@ -93,6 +93,12 @@ class ImageBurner:
         self.event.wait()
         self.next_id+=1
 
+    def cancel(self):
+        for p in self.burns.values():
+            if "process" in p and p["process"].isalive():
+                p["process"].terminate(force=True)
+        self.burns={}
+
 def burn_image_to_disk(source_image=None,target_disk=None,progress_callback=None):
     proc=PtyProcess.spawn(["wdd.exe",f"if=\\\\.\\PHYSICALDRIVE2",f"of=temp.img","status=progress"])
     while proc.isalive():

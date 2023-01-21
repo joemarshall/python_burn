@@ -16,23 +16,40 @@ class DataHolder:
     unipw:str=""
     burntype:str=""
 
-
 class WifiFrame(Frame):
-    def __init__(self,screen,burner):
+    def __init__(self,screen,holder):        
         super().__init__(screen=screen,height=screen.height,width=screen.width)
+        self.dataholder=holder
         layout=Layout([100],True)
         self.add_layout(layout)
-        layout.add_widget(Text("University username (e.g. psxwy2):", "uniname"))
-        layout.add_widget(Text("University password", "unipw",hide_char="*"))
-        layout.add_widget(Text("Home wifi name", "wifiname"))
-        layout.add_widget(Text("Home wifi password:", "wifipw",hide_char="*"))
+        layout.add_widget(Text("University username (e.g. psxwy2):", "uniname",validator=r"[0-9a-z]+$"))
+        layout.add_widget(Text("University password", "unipw",hide_char="*",validator=lambda x:len(x)>=1))
+        layout.add_widget(Text("Home wifi name", "wifiname",validator=r"\w|\s"))
+        layout.add_widget(Text("Home wifi password:", "wifipw",hide_char="*",validator=lambda x:len(x)>=8))
         layout2 = Layout([1, 1, 1, 1])
         self.add_layout(layout2)
-        layout2.add_widget(Button("OK", self.ok), 0)
-        layout2.add_widget(Button("Cancel", self.cancel), 3)        
+        self.ok_button=layout2.add_widget(Button("OK", self.ok), 0)
+        self.cancel_button=layout2.add_widget(Button("Cancel", self.cancel), 3)        
         self.fix()
 
+    @property
+    def frame_update_count(self):
+        return 1
+
+
+    def update(self,frame_no):
+        try:
+            self.save(validate=True)
+            self.ok_button.disabled=False
+        except InvalidFields:
+            self.ok_button.disabled=True
+        super().update(frame_no)
+            
+            
     def ok(self):
+        self.save(validate=True)
+        for x in self.data.keys():
+            setattr(self.dataholder,x,self.data[x])
         raise NextScene("burn")
 
     def cancel(self):
@@ -92,9 +109,6 @@ class BurnDoneFrame(Frame):
         # back to menu
         raise NextScene("burn_ready")
 
-
-
-
 class BurnFrame(Frame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
@@ -121,9 +135,7 @@ class BurnFrame(Frame):
 
     def update(self,frame):
         progress=self.dataholder.burner.get_progress(only_updated=False)
-        print(".")
         for _,data in progress:
-            print("!!!")
             dev_id=data["target"]
             if dev_id not in self.progresses:
                 self.progress_layout.add_widget(Label(dev_id+":"), 0)
@@ -141,13 +153,15 @@ class BurnFrame(Frame):
 
     def cancel(self):
         # are you sure?
-        dlg=PopUpDialog(self.screen,text="Cancel burn, are you sure?",buttons=["ok","cancel"])
-        self.add_effect(dlg)
+        dlg=PopUpDialog(self.screen,text="Cancel burn, are you sure?",buttons=["keep going","stop"],on_close=self.cancel_popup)
+        self._scene.add_effect(dlg)
 
-        # cancel any pending burns
-        self.dataholder.burner.cancel()
-        # back to menu
-        raise NextScene("menu")
+    def cancel_popup(self,index):
+        if index==1:
+            # cancel any pending burns
+            self.dataholder.burner.cancel()
+            # back to menu
+            raise NextScene("menu")
 
 class MenuFrame(Frame):
     def __init__(self,screen,dataholder):
