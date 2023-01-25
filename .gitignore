@@ -5,6 +5,7 @@ __pycache__/
 
 # disk images
 *.img
+*.xz
 
 # C extensions
 *.so

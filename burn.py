@@ -4,6 +4,9 @@ import threading
 import subprocess
 import os
 
+from image_edit import add_contents_to_card
+import rawdisk
+
 class ImageBurner:
     def __init__(self):
         self.burns={}
@@ -38,85 +41,85 @@ class ImageBurner:
         return (len(self.burns)>0)
 
     def get_all_disks(self):
-        return [("//DEVNULL/ERROR","Fake drive")]
-        result=subprocess.run(["wdd.exe","list"],capture_output=True)
+        result=subprocess.run(["wdd.exe","list"],capture_output=True,text=True)
         ret_val=[]
         lines=result.stdout.splitlines()
-        col_devid=lines[0].find(b"DeviceID")
-        col_model=lines[0].find(b"Model")
-        col_partitions=lines[0].find(b"Partitions")
+        col_devid=lines[0].find("DeviceID")
+        col_model=lines[0].find("Model")
+        col_partitions=lines[0].find("Partitions")
         for line in lines[1:]:
             if len(line)>col_model:
                 dev_id=line[col_devid:col_model].strip()
                 model=line[col_model:col_partitions].strip()
-                if model.find(b"USB")!=-1:
+                if model.find("USB")!=-1:
                     ret_val.append((dev_id,model))
         return ret_val
 
-    def _burn_thread(self,source_image,target_disk,id):
-        total_size=os.path.getsize(source_image)
-        proc=PtyProcess.spawn(["wdd.exe",f"if={source_image}",f"of={target_disk}","status=progress"])
-        self.burns[id]={"process":proc}
-        self.burns[id]["target"]=target_disk
-        self.burns[id]["total_size"]=total_size
-        self.burns[id]["finished"]=False
-        self.burns[id]["updated"]=True
-        self.burns[id]["time_taken"]=""
-        self.burns[id]["speed"]=""
-        self.burns[id]["bytes_transferred"]=0
-        self.event.set()
-        output=[]
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        while proc.isalive():
-            line=proc.readline()
-            output.append(ansi_escape.sub('', line))
-            match=re.match(r".*\[H(\d+) bytes[^,]*,([^,]*),\w*(.*/s)",str(line))
-            if match:
-                bytes_transferred,time_taken,speed=match.groups()
-                self.burns[id]["bytes_transferred"]=int(bytes_transferred)
-                self.burns[id]["time_taken"]=time_taken
-                self.burns[id]["speed"]=speed
-                self.burns[id]["updated"]=True
-                self.event.set()
-        
-        self.burns[id]["updated"]=True
+    def _burn_progress(self,current,total,id):
+        if id in self.burns:
+            self.burns[id]["bytes_transferred"]=current
+            self.burns[id]["updated"]=True
+            self.event.set()
+            return self.burns[id]["cancelled"]==False
+        else:
+            return False
+
+    def _burn_thread(self,source_image,target_disk,id,contents_only):
+        try:
+            self.burns[id]["text"]="Burning image"
+            if not contents_only:
+                rawdisk.copy_to_disk(source_image,target_disk,self._burn_progress,id)
+            self.burns[id]["text"]="Copying contents"
+            add_contents_to_card(target_disk)
+            if not contents_only:
+                self.burns[id]["output"]="Burnt and patched"
+            else:
+                self.burns[id]["output"]="Patched"
+            self.burns[id]["result"]=0
+        except RuntimeError as r:
+            self.burns[id]["result"]=1
+            self.burns[id]["output"]=str(r)
+        except IOError as r:
+            self.burns[id]["result"]=2
+            self.burns[id]["output"]=str(r)
         self.burns[id]["finished"]=True
-        self.burns[id]["result"]=proc.exitstatus
-        self.burns[id]["output"]="\n".join(output)
         self.event.set()
 
-    def burn_image_to_disk(self,source_image=None,target_disk=None):
-        self.burns[self.next_id]={}
-        thd=threading.Thread(target=self._burn_thread,args=[source_image,target_disk,self.next_id],daemon=True)
-        thd.start()
+    def burn_image_to_disk(self,source_image=None,target_disk=None,contents_only=False):
+        id=self.next_id
+        self.next_id+=1
+        self.burns[id]={}
+        total_size=os.path.getsize(source_image) 
+        self.burns[id]["cancelled"]=False
+        self.burns[id]["text"]=""
+        self.burns[id]["finished"]=False
+        self.burns[id]["total_size"]=total_size
+        self.burns[id]["target"]=target_disk
+        self.burns[id]["thd"]=threading.Thread(target=self._burn_thread,args=[source_image,target_disk,id,contents_only],daemon=True)
+        self.burns[id]["updated"]=True
+        self.burns[id]["bytes_transferred"]=0
+        self.burns[id]["thd"].start()
         # should fire event
         self.event.wait()
-        self.next_id+=1
 
     def cancel(self):
-        for p in self.burns.values():
-            if "process" in p and p["process"].isalive():
-                p["process"].terminate(force=True)
+        for x in self.burns.keys():
+            self.burns[x]["cancelled"]=True
+        ended=False
+        # wait for cancelled transfers to stop
+        while not ended:
+            ended=True
+            for x in self.burns.keys():
+                if self.burns[x]["finished"]==False:
+                    ended=False
         self.burns={}
-
-def burn_image_to_disk(source_image=None,target_disk=None,progress_callback=None):
-    proc=PtyProcess.spawn(["wdd.exe",f"if=\\\\.\\PHYSICALDRIVE2",f"of=temp.img","status=progress"])
-    while proc.isalive():
-        print(line)
-        match=re.match(r".*\[H(\d+) bytes[^,]*,([^,]*),\w*(.*/s)",str(line))
-        if match:
-            bytes_transferred,time_taken,speed=match.groups()
-            if progress_callback:
-                progress_callback(bytes_transferred,time_taken,speed)
-
-
 
 
 if __name__=="__main__":
     i=ImageBurner()
 
 #   get_all_disks()
-    i.burn_image_to_disk(source_image="test.img",target_disk="\\\\.\\PHYSICALDRIVE2")
+    i.burn_image_to_disk(source_image="raspios.img",target_disk="\\\\.\\PHYSICALDRIVE2")
     while i.burning():
         print(".")
         print(i.wait())

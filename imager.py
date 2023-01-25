@@ -1,15 +1,24 @@
 from asciimatics.widgets import Frame, TextBox, Layout, Label, Divider, Text, \
     CheckBox, RadioButtons, Button, PopUpDialog, TimePicker, DatePicker, DropdownList, PopupMenu
+from asciimatics.widgets.filebrowser import FileBrowser
 from asciimatics.screen import Screen
 from asciimatics.scene import Scene
 from asciimatics.exceptions import ResizeScreenError, NextScene, StopApplication, InvalidFields
 
 from dataclasses import dataclass
 from burn import ImageBurner
+import image_edit
+import os
+from pathlib import Path
+from lzma import LZMADecompressor
+from zipfile import ZipFile
+import shutil
 
 @dataclass
 class DataHolder:
     burner:ImageBurner
+    labimage:bool=True
+    contents_only:bool=False # if this is true, we only copy contents to existing image sd
     wifipw:str=""
     wifiname:str=""
     uniname:str=""
@@ -49,7 +58,7 @@ class WifiFrame(Frame):
     def ok(self):
         self.save(validate=True)
         for x in self.data.keys():
-            setattr(self.dataholder,x,self.data[x])
+            setattr(self.dataholder,x,self.data[x])            
         raise NextScene("burn")
 
     def cancel(self):
@@ -78,8 +87,9 @@ class BurnReadyFrame(Frame):
     def ok(self):
         # make image
         # start burn (on first drive or on all drives depending on type)
-        for (disk,model) in dataholder.burner.get_all_disks():
-            dataholder.burner.burn_image_to_disk(source_image="test.img",target_disk=disk)
+        image_edit.create_wpa_supplicant(self.dataholder)
+        for (disk,model) in self.dataholder.burner.get_all_disks():
+            self.dataholder.burner.burn_image_to_disk(source_image="raspios.img",target_disk=disk,contents_only=self.dataholder.contents_only)
         raise NextScene("burn")
 
     def cancel(self):
@@ -102,7 +112,7 @@ class BurnDoneFrame(Frame):
     def menu(self):
         # make image
         # start burn (on first drive or on all drives depending on type)
-        dataholder.burner.burn_image_to_disk(source_image="test.img",target_disk="\\\\.\\PHYSICALDRIVE2")
+        dataholder.burner.burn_image_to_disk(source_image="raspios.img",target_disk="\\\\.\\PHYSICALDRIVE2")
         raise NextScene("menu")
 
     def repeat(self):
@@ -115,10 +125,11 @@ class BurnFrame(Frame):
         self.dataholder=dataholder
         layout=Layout([100],False)
         self.add_layout(layout)
-        layout.add_widget(Label("Burning - press cancel to stop"), 0)
         self.progresses={}
         progress_layout=Layout([1,4],True)
         self.add_layout(progress_layout)
+        self.burncount_widget=layout.add_widget(Label("Burning 0 cards - press cancel to stop"), 0)
+
         self.progress_layout=progress_layout
         for (id,data) in self.dataholder.burner.get_progress():            
             dev_id=data["target"]
@@ -140,15 +151,26 @@ class BurnFrame(Frame):
             if dev_id not in self.progresses:
                 self.progress_layout.add_widget(Label(dev_id+":"), 0)
                 self.progresses[dev_id]=self.progress_layout.add_widget(Label("."), 1)
+                if self.dataholder.contents_only==True:
+                    self.burncount_widget.text="Repatching %d card(s) - press cancel to stop"%len(self.progresses)
+                else:
+                    self.burncount_widget.text="Burning %d card(s) - press cancel to stop"%len(self.progresses)
                 self.fix()
             if data["finished"]==True:
                 if data["result"]!=0:
                     self.progresses[dev_id].text="Failed: "+data["output"]
-                print(data)
+                else:
+                    self.progresses[dev_id].text="|"+"Done"
             else:
-                percent_sent=data["bytes_transferred"]/data["total_size"]
-                progress_count=int((percent_sent+0.5)//20)
-                self.progresses[dev_id].text="."*progress_count
+                bytes_transferred=data["bytes_transferred"]
+                total_size=data["total_size"]
+                progress_text=data["text"]
+                percent_sent=bytes_transferred/total_size
+                PROGRESS_LENGTH=40
+                progress_count=int(PROGRESS_LENGTH*percent_sent)                                
+                self.progresses[dev_id].text="|"+"."*progress_count+" "*(PROGRESS_LENGTH-progress_count) + "| "+ progress_text + " | %d/%d MB"%(bytes_transferred//1048576,total_size//1048576)
+                self.screen.force_update()
+#                self.progresses[dev_id].refresh()
         super().update(frame)
 
     def cancel(self):
@@ -166,32 +188,103 @@ class BurnFrame(Frame):
 class MenuFrame(Frame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
-        menu_items=[("Burn lab image to SD card(s)",self.burn_lab),("Burn student image to single SD card",self.burn_student),("Set SD card to lab image",self.set_lab),("Set SD card to student image",self.set_student)]        
+        self.dataholder=dataholder
+        menu_items=[("Burn lab image to SD card(s)",self.burn_lab),("Burn student image to single SD card",self.burn_student),("Set SD card to lab image",self.set_lab),("Set SD card to student image",self.set_student),("update base image",self.update_base_image)]        
         layout=Layout([100],True)
         self.add_layout(layout)
         self.widgets=[]
         for label,cb in menu_items:
             self.widgets.append(layout.add_widget(Button(text=label,add_box=False,on_click=cb,name=label),0))
-            print(label)
         self.fix()            
 
     def burn_lab(self):
+        self.dataholder.contents_only=False
         raise NextScene("burn_ready")
     def burn_student(self):
+        self.dataholder.contents_only=False
         raise NextScene("wifi")
     def set_lab(self):
+        self.dataholder.contents_only=True
         raise NextScene("burn_ready")
     def set_student(self):
+        self.dataholder.contents_only=True
         raise NextScene("wifi")
+    
+    def update_base_image(self):
+        raise NextScene("update_image")
 
+class UpdateImageFrame(Frame):
+    def __init__(self,screen,dataholder):
+        super().__init__(screen=screen,height=screen.height,width=screen.width)
+        self.dataholder=dataholder
+        self.file_layout=Layout([100],True)
+        self.add_layout(self.file_layout)
+        self.file_chooser=FileBrowser(root=".",height=screen.height-3,name="image_file_chooser",file_filter=".*(.xz|.zip|.img)$",on_select=self.copy_image)
+        progress_layout=Layout([100],False)
+        self.add_layout(progress_layout)
+        self.progress=Label("Progress: "+("."*40))
+        progress_layout.add_widget(self.progress,0)
+        self.file_layout.add_widget(self.file_chooser,0)
+        self.fix()
+
+    def copy_image(self):
+        img=self.file_chooser.value
+        self.file_layout.clear_widgets()
+        if img.endswith(".img"):
+            if os.path.abspath(img)!=os.path.abspath("raspios.img"):
+                shutil.copyfile(img,"raspios.img")
+        elif img.endswith(".zip"):
+            # assume biggest file in zip is image
+            f_size=0
+            f_img=""
+            with ZipFile(img) as z:
+                for info in z.infolist():
+                    if info.file_size>f_size:
+                        f_size=info.file_size
+                        f_img=info.filename
+                with z.open(f_img) as zf:
+                    with open("raspios","wb") as outfile:
+                        shutil.copyfileobj(zf,outfile)
+        elif img.endswith(".xz"):
+            with open(img,"rb") as infile:
+                with open("raspios.img","wb") as outfile:
+                    dc=LZMADecompressor()
+                    total_len=os.stat(img).st_size
+                    current_len=0
+                    try:
+                        while current_len<total_len:
+                            data=infile.read(1048576) # 16mb at a time
+                            if len(data)>0:
+                                outfile.write(dc.decompress(data))
+                            current_len+=len(data)
+
+                            progress=int(40*(current_len/total_len))
+                            new_progress_text="Progress: "+("*"*progress)+("."*(40-progress) + " Unpacking %d/%d MB"%(current_len/1048576,total_len/1048576))
+                            if self.progress.text!=new_progress_text:
+                                self.progress.text=new_progress_text
+                                self.screen.refresh()
+                                self.screen.force_update()
+                                self.screen.draw_next_frame()
+                    except EOFError:                        
+                        pass
+        else:
+            dlg=PopUpDialog(self.screen,text=f"Bad image file format {img}",buttons=["OK"],on_close=self.done)
+            self._scene.add_effect(dlg)
+            return
+        dlg=PopUpDialog(self.screen,text=f"Image copied successfully: {img}",buttons=["OK"],on_close=self.done)
+        self._scene.add_effect(dlg)
+
+    def done(self,val=None):
+        self.reset()
+        raise NextScene("menu")
 
 def main(screen, scene,holder):
     # Define your Scenes here
     # 1) Menu to choose what to do
     # 2) Form to input wifi + passwords
     # 3) Burn progress screen
-
-    scenes = [Scene([MenuFrame(screen,holder)],name="menu"),Scene([WifiFrame(screen,holder)],name="wifi"),Scene([BurnReadyFrame(screen,holder)],name="burn_ready"),Scene([BurnFrame(screen,holder)],name="burn"),Scene([BurnDoneFrame(screen,holder)],name="burn_done")]
+    os.chdir(os.path.dirname(__file__))
+    scenes = [Scene([MenuFrame(screen,holder)],name="menu"),Scene([WifiFrame(screen,holder)],name="wifi"),Scene([BurnReadyFrame(screen,holder)],name="burn_ready"),Scene([BurnFrame(screen,holder)],name="burn"),Scene([BurnDoneFrame(screen,holder)],name="burn_done"),Scene([UpdateImageFrame(screen,holder)],name="update_image")]
 
     # Run your program
     screen.play(scenes, stop_on_resize=True, start_scene=scene)
