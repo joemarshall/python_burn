@@ -2,6 +2,7 @@ from asciimatics.widgets import Frame, TextBox, Layout, Label, Divider, Text, \
     CheckBox, RadioButtons, Button, PopUpDialog, TimePicker, DatePicker, DropdownList, PopupMenu
 from asciimatics.widgets.filebrowser import FileBrowser
 from asciimatics.screen import Screen
+from asciimatics.event import KeyboardEvent
 from asciimatics.scene import Scene
 from asciimatics.exceptions import ResizeScreenError, NextScene, StopApplication, InvalidFields
 
@@ -13,6 +14,7 @@ from pathlib import Path
 from lzma import LZMADecompressor
 from zipfile import ZipFile
 import shutil
+import sys
 
 @dataclass
 class DataHolder:
@@ -25,7 +27,21 @@ class DataHolder:
     unipw:str=""
     burntype:str=""
 
-class WifiFrame(Frame):
+class EscapeFrame(Frame):
+    def process_event(self,event):
+        if isinstance(event, KeyboardEvent) and event.key_code==-1:
+            self.cancel()
+        else:
+            super().process_event(event)
+    
+    def cancel(self):
+        # do nothing by default
+        pass
+            
+
+
+
+class WifiFrame(EscapeFrame):
     def __init__(self,screen,holder):        
         super().__init__(screen=screen,height=screen.height,width=screen.width)
         self.dataholder=holder
@@ -71,18 +87,40 @@ class WifiFrame(Frame):
 #                  many cards will be written and wait for okay
 
 
-class BurnReadyFrame(Frame):
+class BurnReadyFrame(EscapeFrame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
         self.dataholder=dataholder
         layout=Layout([100],True)
         self.add_layout(layout)
-        layout.add_widget(Label("About to burn. Press OK to continue"), 0)
+        self.burn_info=layout.add_widget(Label("Burn time"), 0)
         layout2=Layout([1,1,1,1],False)
         self.add_layout(layout2)
-        layout2.add_widget(Button("OK", self.ok), 0)
+        self.okbutton=layout2.add_widget(Button("OK", self.ok), 0)
         layout2.add_widget(Button("Cancel", self.cancel), 3)        
         self.fix()
+
+    @property
+    def frame_update_count(self):
+        # update 4 times a second
+        return 5
+
+
+    def update(self,frame):        
+        disk_count=0
+        self.burn_info.text=""
+        for (disk,model) in self.dataholder.burner.get_all_disks():
+            self.burn_info.text+=f"{disk}:{model}\n"
+            disk_count+=1
+        if disk_count==0:
+            self.okbutton.disabled=True
+            self.burn_info.text="You need to insert an sd card before burning can begin"
+            self.okbutton.text=""
+        else:
+            self.burn_info.text=f"About to burn {disk_count} sd cards to the following drives:\n"+self.burn_info.text
+            self.okbutton.disabled=False
+            self.okbutton.text="Ok"
+        super().update(frame)
     
     def ok(self):
         # make image
@@ -96,7 +134,7 @@ class BurnReadyFrame(Frame):
         # back to menu
         raise NextScene("menu")
 
-class BurnDoneFrame(Frame):
+class BurnDoneFrame(EscapeFrame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
         self.dataholder=dataholder
@@ -119,7 +157,7 @@ class BurnDoneFrame(Frame):
         # back to menu
         raise NextScene("burn_ready")
 
-class BurnFrame(Frame):
+class BurnFrame(EscapeFrame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
         self.dataholder=dataholder
@@ -185,11 +223,11 @@ class BurnFrame(Frame):
             # back to menu
             raise NextScene("menu")
 
-class MenuFrame(Frame):
+class MenuFrame(EscapeFrame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
         self.dataholder=dataholder
-        menu_items=[("Burn lab image to SD card(s)",self.burn_lab),("Burn student image to single SD card",self.burn_student),("Set SD card to lab image",self.set_lab),("Set SD card to student image",self.set_student),("update base image",self.update_base_image)]        
+        menu_items=[("Burn lab image to SD card(s)",self.burn_lab),("Burn student image to single SD card",self.burn_student),("Set SD card to lab image",self.set_lab),("Set SD card to student image",self.set_student),("Update base image",self.update_base_image)]        
         layout=Layout([100],True)
         self.add_layout(layout)
         self.widgets=[]
@@ -198,22 +236,40 @@ class MenuFrame(Frame):
         self.fix()            
 
     def burn_lab(self):
-        self.dataholder.contents_only=False
-        raise NextScene("burn_ready")
+        if not os.path.exists("wpa_supplicant.lab.conf"):
+            dlg=PopUpDialog(self.screen,text="You need to create wpa_supplicant.lab.conf before you can burn lab images",buttons=["OK"])
+            self._scene.add_effect(dlg)
+        else:
+            self.dataholder.contents_only=False
+            self.dataholder.labimage=True
+            raise NextScene("burn_ready")
+        
     def burn_student(self):
         self.dataholder.contents_only=False
+        self.dataholder.labimage=False
         raise NextScene("wifi")
+    
     def set_lab(self):
-        self.dataholder.contents_only=True
-        raise NextScene("burn_ready")
+        if not os.path.exists("wpa_supplicant.lab.conf"):
+            dlg=PopUpDialog(self.screen,text="You need to create wpa_supplicant.lab.conf before you can burn lab images",buttons=["OK"])
+            self._scene.add_effect(dlg)
+        else:
+            self.dataholder.contents_only=True
+            self.dataholder.labimage=True
+            raise NextScene("burn_ready")
+        
     def set_student(self):
+        self.dataholder.labimage=False
         self.dataholder.contents_only=True
         raise NextScene("wifi")
     
     def update_base_image(self):
         raise NextScene("update_image")
+    
+    def cancel(self):
+        raise StopApplication("User terminated app")
 
-class UpdateImageFrame(Frame):
+class UpdateImageFrame(EscapeFrame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
         self.dataholder=dataholder
@@ -278,6 +334,8 @@ class UpdateImageFrame(Frame):
         self.reset()
         raise NextScene("menu")
 
+
+
 def main(screen, scene,holder):
     # Define your Scenes here
     # 1) Menu to choose what to do
@@ -289,6 +347,8 @@ def main(screen, scene,holder):
     # Run your program
     screen.play(scenes, stop_on_resize=True, start_scene=scene)
 
+# this is just used in curses programs so escape key works
+os.environ.setdefault("ESCDELAY", "25")
 dataholder=DataHolder(burner=ImageBurner())
 last_scene = None
 while True:

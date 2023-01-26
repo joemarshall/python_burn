@@ -27,7 +27,8 @@ def add_contents_to_card(device_name):
            break
       if drive_letter is None:
          raise RuntimeError("Couldn't find drive letter")
-      shutil.copytree("./contents",f"{drive_letter}:\\\\contents\\",dirs_exist_ok=True,ignore=shutil.ignore_patterns(".git"))
+      shutil.copytree("./contents",f"{drive_letter}:\\\\contents\\",dirs_exist_ok=True)
+#      shutil.copytree("./contents",f"{drive_letter}:\\\\contents\\",dirs_exist_ok=True,ignore=shutil.ignore_patterns(".git"))
       shutil.copytree("./installscripts",f"{drive_letter}:\\",dirs_exist_ok=True,ignore=shutil.ignore_patterns(".git"))
       # make command line run install_contents.sh
       cmd_line=Path(f"{drive_letter}:\\") / "cmdline.txt"
@@ -39,41 +40,47 @@ def add_contents_to_card(device_name):
       cmd_line.write_text(cmd_line_text)
     
 def create_wpa_supplicant(options):
-    conf_file=Path(__file__).parent / "contents" / "etc"/ "wpa_supplicant.conf"
+    conf_file=Path(__file__).parent / "contents" / "etc"/ "wpa_supplicant"/"wpa_supplicant.conf"
     conf_file.parent.mkdir(exist_ok=True,parents=True)
-    unihash=lmhash.hash(options.unipw)
-    conf_file.write_text("""
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-country=GB
-    
-network={
-  ssid="MRTHotspot"
+
+    if options.labimage==True:
+      shutil.copyfile("userconf.lab","installscripts/userconf")
+      shutil.copyfile("wpa_supplicant.lab.conf",conf_file)
+    else:
+      shutil.copyfile("userconf.student.conf","installscripts/userconf")
+      unihash=lmhash.hash(options.unipw)
+      conf_file.write_text("""
+  ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+  country=GB
+      
+  network={
+    ssid="MRTHotspot"
+    proto=RSN
+    key_mgmt=WPA-PSK
+    pairwise=CCMP TKIP
+    group=CCMP TKIP
+    psk="MRTHotspot"
+  }
+
+  network={
+    ssid="eduroam"
+    key_mgmt=WPA-EAP
+    pairwise=CCMP
+    group=CCMP TKIP
+    eap=PEAP
+    identity="%s@nottingham.ac.uk"
+    domain_suffix_match="radius.nottingham.ac.uk"
+    phase2="auth=MSCHAPV2"
+    password=hash:%s
+    anonymous_identity="anonymous@nottingham.ac.uk"
+  }
+
+  network={
+  ssid="%s"
   proto=RSN
   key_mgmt=WPA-PSK
   pairwise=CCMP TKIP
   group=CCMP TKIP
-  psk="MRTHotspot"
-}
-
-network={
-  ssid="eduroam"
-  key_mgmt=WPA-EAP
-  pairwise=CCMP
-  group=CCMP TKIP
-  eap=PEAP
-  identity="%s@nottingham.ac.uk"
-  domain_suffix_match="radius.nottingham.ac.uk"
-  phase2="auth=MSCHAPV2"
-  password=hash:%s
-  anonymous_identity="anonymous@nottingham.ac.uk"
-}
-
-network={
-ssid="%s"
-proto=RSN
-key_mgmt=WPA-PSK
-pairwise=CCMP TKIP
-group=CCMP TKIP
-psk="%s"
-}
-"""%(options.uniname,unihash,options.wifiname,options.wifipw),newline="\n")
+  psk="%s"
+  }
+  """%(options.uniname,unihash,options.wifiname,options.wifipw),newline="\n")
