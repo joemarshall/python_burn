@@ -117,9 +117,10 @@ class BurnReadyFrame(EscapeFrame):
             self.burn_info.text="You need to insert an sd card before burning can begin"
             self.okbutton.text=""
         else:
-            self.burn_info.text=f"About to burn {disk_count} sd cards to the following drives:\n"+self.burn_info.text
-            self.okbutton.disabled=False
-            self.okbutton.text="Ok"
+            newtext=f"About to burn {disk_count} sd cards to the following drives:\n"+self.burn_info.text
+            if self.burn_info.text!= newtext:
+                self.okbutton.disabled=False
+                self.okbutton.text="Ok"
         super().update(frame)
     
     def ok(self):
@@ -138,24 +139,51 @@ class BurnDoneFrame(EscapeFrame):
     def __init__(self,screen,dataholder):
         super().__init__(screen=screen,height=screen.height,width=screen.width)
         self.dataholder=dataholder
-        layout=Layout([100],True)
+        layout=Layout([100],False)
         self.add_layout(layout)
         layout.add_widget(Label("Burn complete"), 0)
+
+        self.progress_layout=Layout([1,4],True)
+        self.progresses={}
+        self.add_layout(self.progress_layout)
+
         layout2=Layout([1,1,1,1],False)
         self.add_layout(layout2)
+
         layout2.add_widget(Button("Menu", self.menu), 0)
         layout2.add_widget(Button("Repeat", self.repeat), 3)        
         self.fix()
     
-    def menu(self):
-        # make image
-        # start burn (on first drive or on all drives depending on type)
-        dataholder.burner.burn_image_to_disk(source_image="raspios.img",target_disk="\\\\.\\PHYSICALDRIVE2")
-        raise NextScene("menu")
+    def update(self,frame):
+        for (id,data) in self.dataholder.burner.get_progress():
+            if id not in self.progresses:
+                dev_id=data["target"]
+                output=data["output"]
+                result=data["result"]
+                self.progress_layout.add_widget(Label(dev_id+":"), 0)
+                label2=self.progress_layout.add_widget(Label(output,), 1)
+                self.progresses[id]=label2
+                if result!=0:
+                    label2.custom_colour="invalid"
+        self.fix()
+        super().update(frame)
 
     def repeat(self):
-        # back to menu
+        # make image
+        # start burn (on first drive or on all drives depending on type)
+        dataholder.burner.cancel()
         raise NextScene("burn_ready")
+
+    def menu(self):
+        # back to menu
+        dataholder.burner.cancel()
+        raise NextScene("menu")
+
+    def cancel(self):
+        # back to menu
+        dataholder.burner.cancel()
+        raise NextScene("menu")
+
 
 class BurnFrame(EscapeFrame):
     def __init__(self,screen,dataholder):
@@ -184,6 +212,7 @@ class BurnFrame(EscapeFrame):
 
     def update(self,frame):
         progress=self.dataholder.burner.get_progress(only_updated=False)
+        burns_left=False
         for _,data in progress:
             dev_id=data["target"]
             if dev_id not in self.progresses:
@@ -197,9 +226,8 @@ class BurnFrame(EscapeFrame):
             if data["finished"]==True:
                 if data["result"]!=0:
                     self.progresses[dev_id].text="Failed: "+data["output"]
-                else:
-                    self.progresses[dev_id].text="|"+"Done"
             else:
+                burns_left=True
                 bytes_transferred=data["bytes_transferred"]
                 total_size=data["total_size"]
                 progress_text=data["text"]
@@ -209,6 +237,8 @@ class BurnFrame(EscapeFrame):
                 self.progresses[dev_id].text="|"+"."*progress_count+" "*(PROGRESS_LENGTH-progress_count) + "| "+ progress_text + " | %d/%d MB"%(bytes_transferred//1048576,total_size//1048576)
                 self.screen.force_update()
 #                self.progresses[dev_id].refresh()
+        if not burns_left:
+            raise NextScene("burn_done")
         super().update(frame)
 
     def cancel(self):

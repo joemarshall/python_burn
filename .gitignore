@@ -167,4 +167,6 @@ cython_debug/
 wpa_supplicant.lab.conf
 contents/etc/wpa_supplicant/wpa_supplicant.conf
 contents/boot/userconf
+installscripts/wpa_supplicant.conf
 userconf.lab.conf
+installscripts/userconf*

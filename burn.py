@@ -3,6 +3,7 @@ import re
 import threading
 import subprocess
 import os
+import wmi
 
 from image_edit import add_contents_to_card
 import rawdisk
@@ -41,19 +42,13 @@ class ImageBurner:
         return (len(self.burns)>0)
 
     def get_all_disks(self):
-        result=subprocess.run(["wdd.exe","list"],capture_output=True,text=True)
-        ret_val=[]
-        lines=result.stdout.splitlines()
-        col_devid=lines[0].find("DeviceID")
-        col_model=lines[0].find("Model")
-        col_partitions=lines[0].find("Partitions")
-        for line in lines[1:]:
-            if len(line)>col_model:
-                dev_id=line[col_devid:col_model].strip()
-                model=line[col_model:col_partitions].strip()
-                if model.find("USB")!=-1:
-                    ret_val.append((dev_id,model))
-        return ret_val
+        drive_list=[]
+        wm = wmi.WMI ()
+        for disk in wm.Win32_DiskDrive():
+            # 7 = removable drive
+            if 7 in disk.Capabilities:
+                drive_list.append((disk.DeviceID,disk.Model))
+        return drive_list
 
     def _burn_progress(self,current,total,id):
         if id in self.burns:
@@ -66,15 +61,15 @@ class ImageBurner:
 
     def _burn_thread(self,source_image,target_disk,id,contents_only):
         try:
-            self.burns[id]["text"]="Burning image"
             if not contents_only:
+                self.burns[id]["text"]="Burning image"
                 rawdisk.copy_to_disk(source_image,target_disk,self._burn_progress,id)
             self.burns[id]["text"]="Copying contents"
             add_contents_to_card(target_disk)
             if not contents_only:
-                self.burns[id]["output"]="Burnt and patched"
+                self.burns[id]["output"]="Burnt and patched successfully"
             else:
-                self.burns[id]["output"]="Patched"
+                self.burns[id]["output"]="Patched successfully"
             self.burns[id]["result"]=0
         except RuntimeError as r:
             self.burns[id]["result"]=1
@@ -117,10 +112,9 @@ class ImageBurner:
 
 if __name__=="__main__":
     i=ImageBurner()
-
-#   get_all_disks()
-    i.burn_image_to_disk(source_image="raspios.img",target_disk="\\\\.\\PHYSICALDRIVE2")
-    while i.burning():
-        print(".")
-        print(i.wait())
+    print(i.get_all_disks())
+    # i.burn_image_to_disk(source_image="raspios.img",target_disk="\\\\.\\PHYSICALDRIVE2")
+    # while i.burning():
+    #     print(".")
+    #     print(i.wait())
 
