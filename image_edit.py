@@ -1,6 +1,6 @@
 import subprocess
 import shutil
-
+from datetime import datetime
 from pathlib import Path
 from passlib.hash import lmhash
 from partitions import get_fat_partition_offset
@@ -82,6 +82,15 @@ def add_contents_to_card(device_name):
   if not found_setting:
      new_config_txt+="enable_uart=1\n"
   config_file.write_text(new_config_txt,newline="\n")
+  # write burn date file to /boot
+  burndate_file=Path(f"{drive_letter}:\\burning-date.txt")
+  burndate_file.write_text("")
+  # write image date file to /boot as git date of startup scripts folder
+  
+  git_date_result=subprocess.run(["git","show","-s","--format=%ci"],capture_output=True,cwd=Path(".") / "contents" / "home" / "pi" / "grove-startup-scripts",text=True)
+  git_time=datetime.strptime(git_date_result.stdout.strip(), "%Y-%m-%d %H:%M:%S %z")
+  imgdate_file=Path(f"{drive_letter}:\\image-date.txt")
+  imgdate_file.write_text(git_time.strftime("%d%m%Y"))
     
 def create_wpa_supplicant(options):
     conf_file=Path(__file__).parent / "installscripts" / "wpa_supplicant.conf"
