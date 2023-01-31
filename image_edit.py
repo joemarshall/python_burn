@@ -57,10 +57,8 @@ def add_contents_to_card(device_name):
   shutil.copytree("./installscripts",f"{drive_letter}:\\",dirs_exist_ok=True,ignore=shutil.ignore_patterns(".git"))
   # make command line run install_contents.sh
   cmd_line=Path(f"{drive_letter}:\\") / "cmdline.txt"
-  cmd_line_bak=Path(f"{drive_letter}:\\") / "cmdline.txt.original"
-  if not cmd_line_bak.exists():
-      shutil.copy(cmd_line,cmd_line_bak)
-  cmd_line_text=cmd_line_bak.read_text().strip()
+  cmd_line_text=cmd_line.read_text().strip()
+  cmd_line_text=re.sub(r" systemd.\S+","",cmd_line_text)
   cmd_line_text+=" systemd.run=/boot/install_contents.sh systemd.run_success_action=reboot systemd.run_failure_action=reboot "
   cmd_line.write_text(cmd_line_text,newline="\n")
   print(cmd_line,cmd_line_text)
