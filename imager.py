@@ -15,66 +15,73 @@ from lzma import LZMADecompressor
 from zipfile import ZipFile
 import shutil
 import sys
+from datetime import date
+
 
 @dataclass
 class DataHolder:
-    burner:ImageBurner
-    labimage:bool=True
-    contents_only:bool=False # if this is true, we only copy contents to existing image sd
-    wifipw:str=""
-    wifiname:str=""
-    uniname:str=""
-    unipw:str=""
-    burntype:str=""
+    burner: ImageBurner
+    labimage: bool = True
+    # if this is true, we only copy contents to existing image sd
+    contents_only: bool = False
+    wifipw: str = ""
+    wifiname: str = ""
+    uniname: str = ""
+    unipw: str = ""
+    patch_image: bool = False  # used when copying image and patching it
+    hash:bool = True # hash uni password
+
 
 class EscapeFrame(Frame):
-    def process_event(self,event):
-        if isinstance(event, KeyboardEvent) and event.key_code==-1:
+    def process_event(self, event):
+        if isinstance(event, KeyboardEvent) and event.key_code == -1:
             self.cancel()
         else:
             super().process_event(event)
-    
+
     def cancel(self):
         # do nothing by default
         pass
-            
-
 
 
 class WifiFrame(EscapeFrame):
-    def __init__(self,screen,holder):        
-        super().__init__(screen=screen,height=screen.height,width=screen.width)
-        self.dataholder=holder
-        layout=Layout([100],True)
+    def __init__(self, screen, holder):
+        super().__init__(screen=screen, height=screen.height, width=screen.width)
+        self.dataholder = holder
+        layout = Layout([100], True)
         self.add_layout(layout)
-        layout.add_widget(Text("University username (e.g. psxwy2):", "uniname",validator=r"[0-9a-z]+$"))
-        layout.add_widget(Text("University password", "unipw",hide_char="*",validator=lambda x:len(x)>=1))
-        layout.add_widget(Text("Home wifi name", "wifiname",validator=r"\w|\s"))
-        layout.add_widget(Text("Home wifi password:", "wifipw",hide_char="*",validator=lambda x:len(x)>=8))
+        layout.add_widget(
+            Text("University username (e.g. psxwy2):", "uniname", validator=r"[0-9a-z]+$"))
+        layout.add_widget(Text("University password", "unipw",
+                          hide_char="*", validator=lambda x: len(x) >= 1))
+        layout.add_widget(
+            Text("Home wifi name", "wifiname", validator=r"\w|\s"))
+        layout.add_widget(Text("Home wifi password:", "wifipw",
+                          hide_char="*", validator=lambda x: len(x) >= 8))
         layout2 = Layout([1, 1, 1, 1])
         self.add_layout(layout2)
-        self.ok_button=layout2.add_widget(Button("OK", self.ok), 0)
-        self.cancel_button=layout2.add_widget(Button("Cancel", self.cancel), 3)        
+        self.ok_button = layout2.add_widget(Button("OK", self.ok), 0)
+        self.cancel_button = layout2.add_widget(
+            Button("Cancel", self.cancel), 3)
         self.fix()
 
     @property
     def frame_update_count(self):
         return 1
 
-
-    def update(self,frame_no):
+    def update(self, frame_no):
         try:
             self.save(validate=True)
-            self.ok_button.disabled=False
+            self.ok_button.disabled = False
         except InvalidFields:
-            self.ok_button.disabled=True
+            self.ok_button.disabled = True
         super().update(frame_no)
-            
-            
+
     def ok(self):
+        self.dataholder.hash=True # hash uni password
         self.save(validate=True)
         for x in self.data.keys():
-            setattr(self.dataholder,x,self.data[x])            
+            setattr(self.dataholder, x, self.data[x])
         raise NextScene("burn")
 
     def cancel(self):
@@ -88,16 +95,16 @@ class WifiFrame(EscapeFrame):
 
 
 class BurnReadyFrame(EscapeFrame):
-    def __init__(self,screen,dataholder):
-        super().__init__(screen=screen,height=screen.height,width=screen.width)
-        self.dataholder=dataholder
-        layout=Layout([100],True)
+    def __init__(self, screen, dataholder):
+        super().__init__(screen=screen, height=screen.height, width=screen.width)
+        self.dataholder = dataholder
+        layout = Layout([100], True)
         self.add_layout(layout)
-        self.burn_info=layout.add_widget(Label("Burn time"), 0)
-        layout2=Layout([1,1,1,1],False)
+        self.burn_info = layout.add_widget(Label("Burn time"), 0)
+        layout2 = Layout([1, 1, 1, 1], False)
         self.add_layout(layout2)
-        self.okbutton=layout2.add_widget(Button("OK", self.ok), 0)
-        layout2.add_widget(Button("Cancel", self.cancel), 3)        
+        self.okbutton = layout2.add_widget(Button("OK", self.ok), 0)
+        layout2.add_widget(Button("Cancel", self.cancel), 3)
         self.fix()
 
     @property
@@ -105,66 +112,68 @@ class BurnReadyFrame(EscapeFrame):
         # update 4 times a second
         return 5
 
-
-    def update(self,frame):        
-        disk_count=0
-        self.burn_info.text=""
-        for (disk,model) in self.dataholder.burner.get_all_disks():
-            self.burn_info.text+=f"{disk}:{model}\n"
-            disk_count+=1
-        if disk_count==0:
-            self.okbutton.disabled=True
-            self.burn_info.text="You need to insert an sd card before burning can begin"
-            self.okbutton.text=""
+    def update(self, frame):
+        disk_count = 0
+        self.burn_info.text = ""
+        for (disk, model) in self.dataholder.burner.get_all_disks():
+            self.burn_info.text += f"{disk}:{model}\n"
+            disk_count += 1
+        if disk_count == 0:
+            self.okbutton.disabled = True
+            self.burn_info.text = "You need to insert an sd card before burning can begin"
+            self.okbutton.text = ""
         else:
-            newtext=f"About to burn {disk_count} sd cards to the following drives:\n"+self.burn_info.text
-            if self.burn_info.text!= newtext:
-                self.okbutton.disabled=False
-                self.okbutton.text="Ok"
+            newtext = f"About to burn {disk_count} sd cards to the following drives:\n" + \
+                self.burn_info.text
+            if self.burn_info.text != newtext:
+                self.okbutton.disabled = False
+                self.okbutton.text = "Ok"
         super().update(frame)
-    
+
     def ok(self):
         # make image
         # start burn (on first drive or on all drives depending on type)
         image_edit.create_wpa_supplicant(self.dataholder)
-        for (disk,model) in self.dataholder.burner.get_all_disks():
-            self.dataholder.burner.burn_image_to_disk(source_image="raspios.img",target_disk=disk,contents_only=self.dataholder.contents_only)
+        for (disk, model) in self.dataholder.burner.get_all_disks():
+            self.dataholder.burner.burn_image_to_disk(
+                source_image="raspios.img", target_disk=disk, contents_only=self.dataholder.contents_only)
         raise NextScene("burn")
 
     def cancel(self):
         # back to menu
         raise NextScene("menu")
 
+
 class BurnDoneFrame(EscapeFrame):
-    def __init__(self,screen,dataholder):
-        super().__init__(screen=screen,height=screen.height,width=screen.width)
-        self.dataholder=dataholder
-        layout=Layout([100],False)
+    def __init__(self, screen, dataholder):
+        super().__init__(screen=screen, height=screen.height, width=screen.width)
+        self.dataholder = dataholder
+        layout = Layout([100], False)
         self.add_layout(layout)
         layout.add_widget(Label("Burn complete"), 0)
 
-        self.progress_layout=Layout([1,4],True)
-        self.progresses={}
+        self.progress_layout = Layout([1, 4], True)
+        self.progresses = {}
         self.add_layout(self.progress_layout)
 
-        layout2=Layout([1,1,1,1],False)
+        layout2 = Layout([1, 1, 1, 1], False)
         self.add_layout(layout2)
 
         layout2.add_widget(Button("Menu", self.menu), 0)
-        layout2.add_widget(Button("Repeat", self.repeat), 3)        
+        layout2.add_widget(Button("Repeat", self.repeat), 3)
         self.fix()
-    
-    def update(self,frame):
-        for (id,data) in self.dataholder.burner.get_progress():
+
+    def update(self, frame):
+        for (id, data) in self.dataholder.burner.get_progress():
             if id not in self.progresses:
-                dev_id=data["target"]
-                output=data["output"]
-                result=data["result"]
+                dev_id = data["target"]
+                output = data["output"]
+                result = data["result"]
                 self.progress_layout.add_widget(Label(dev_id+":"), 0)
-                label2=self.progress_layout.add_widget(Label(output,), 1)
-                self.progresses[id]=label2
-                if result!=0:
-                    label2.custom_colour="invalid"
+                label2 = self.progress_layout.add_widget(Label(output,), 1)
+                self.progresses[id] = label2
+                if result != 0:
+                    label2.custom_colour = "invalid"
         self.fix()
         super().update(frame)
 
@@ -186,55 +195,60 @@ class BurnDoneFrame(EscapeFrame):
 
 
 class BurnFrame(EscapeFrame):
-    def __init__(self,screen,dataholder):
-        super().__init__(screen=screen,height=screen.height,width=screen.width)
-        self.dataholder=dataholder
-        layout=Layout([100],False)
+    def __init__(self, screen, dataholder):
+        super().__init__(screen=screen, height=screen.height, width=screen.width)
+        self.dataholder = dataholder
+        layout = Layout([100], False)
         self.add_layout(layout)
-        self.progresses={}
-        progress_layout=Layout([1,4],True)
+        self.progresses = {}
+        progress_layout = Layout([1, 4], True)
         self.add_layout(progress_layout)
-        self.burncount_widget=layout.add_widget(Label("Burning 0 cards - press cancel to stop"), 0)
+        self.burncount_widget = layout.add_widget(
+            Label("Burning 0 cards - press cancel to stop"), 0)
 
-        self.progress_layout=progress_layout
-        for (id,data) in self.dataholder.burner.get_progress():            
-            dev_id=data["target"]
+        self.progress_layout = progress_layout
+        for (id, data) in self.dataholder.burner.get_progress():
+            dev_id = data["target"]
             progress_layout.add_widget(Label(dev_id+":"), 0)
-            self.progresses[dev_id]=progress_layout.add_widget(Label("."), 1)
-        layout2=Layout([1,1,1,1],False)
+            self.progresses[dev_id] = progress_layout.add_widget(Label("."), 1)
+        layout2 = Layout([1, 1, 1, 1], False)
         self.add_layout(layout2)
-        layout2.add_widget(Button("Cancel", self.cancel), 3)        
+        layout2.add_widget(Button("Cancel", self.cancel), 3)
         self.fix()
 
     @property
     def frame_update_count(self):
         return 1
 
-    def update(self,frame):
-        progress=self.dataholder.burner.get_progress(only_updated=False)
-        burns_left=False
-        for _,data in progress:
-            dev_id=data["target"]
+    def update(self, frame):
+        progress = self.dataholder.burner.get_progress(only_updated=False)
+        burns_left = False
+        for _, data in progress:
+            dev_id = data["target"]
             if dev_id not in self.progresses:
                 self.progress_layout.add_widget(Label(dev_id+":"), 0)
-                self.progresses[dev_id]=self.progress_layout.add_widget(Label("."), 1)
-                if self.dataholder.contents_only==True:
-                    self.burncount_widget.text="Repatching %d card(s) - press cancel to stop"%len(self.progresses)
+                self.progresses[dev_id] = self.progress_layout.add_widget(
+                    Label("."), 1)
+                if self.dataholder.contents_only == True:
+                    self.burncount_widget.text = "Repatching %d card(s) - press cancel to stop" % len(
+                        self.progresses)
                 else:
-                    self.burncount_widget.text="Burning %d card(s) - press cancel to stop"%len(self.progresses)
+                    self.burncount_widget.text = "Burning %d card(s) - press cancel to stop" % len(
+                        self.progresses)
                 self.fix()
-            if data["finished"]==True:
-                if data["result"]!=0:
-                    self.progresses[dev_id].text="Failed: "+data["output"]
+            if data["finished"] == True:
+                if data["result"] != 0:
+                    self.progresses[dev_id].text = "Failed: "+data["output"]
             else:
-                burns_left=True
-                bytes_transferred=data["bytes_transferred"]
-                total_size=data["total_size"]
-                progress_text=data["text"]
-                percent_sent=bytes_transferred/total_size
-                PROGRESS_LENGTH=40
-                progress_count=int(PROGRESS_LENGTH*percent_sent)                                
-                self.progresses[dev_id].text="|"+"."*progress_count+" "*(PROGRESS_LENGTH-progress_count) + "| "+ progress_text + " | %d/%d MB"%(bytes_transferred//1048576,total_size//1048576)
+                burns_left = True
+                bytes_transferred = data["bytes_transferred"]
+                total_size = data["total_size"]
+                progress_text = data["text"]
+                percent_sent = bytes_transferred/total_size
+                PROGRESS_LENGTH = 40
+                progress_count = int(PROGRESS_LENGTH*percent_sent)
+                self.progresses[dev_id].text = "|"+"."*progress_count+" "*(
+                    PROGRESS_LENGTH-progress_count) + "| " + progress_text + " | %d/%d MB" % (bytes_transferred//1048576, total_size//1048576)
                 self.screen.force_update()
 #                self.progresses[dev_id].refresh()
         if not burns_left:
@@ -243,147 +257,206 @@ class BurnFrame(EscapeFrame):
 
     def cancel(self):
         # are you sure?
-        dlg=PopUpDialog(self.screen,text="Cancel burn, are you sure?",buttons=["keep going","stop"],on_close=self.cancel_popup)
+        dlg = PopUpDialog(self.screen, text="Cancel burn, are you sure?", buttons=[
+                          "keep going", "stop"], on_close=self.cancel_popup)
         self._scene.add_effect(dlg)
 
-    def cancel_popup(self,index):
-        if index==1:
+    def cancel_popup(self, index):
+        if index == 1:
             # cancel any pending burns
             self.dataholder.burner.cancel()
             # back to menu
             raise NextScene("menu")
 
+
 class MenuFrame(EscapeFrame):
-    def __init__(self,screen,dataholder):
-        super().__init__(screen=screen,height=screen.height,width=screen.width)
-        self.dataholder=dataholder
-        menu_items=[("Burn lab image to SD card(s)",self.burn_lab),("Burn student image to single SD card",self.burn_student),("Set SD card to lab image",self.set_lab),("Set SD card to student image",self.set_student),("Update base image",self.update_base_image)]        
-        layout=Layout([100],True)
+    def __init__(self, screen, dataholder):
+        super().__init__(screen=screen, height=screen.height, width=screen.width)
+        self.dataholder = dataholder
+        menu_items = [("Burn lab image to SD card(s)", self.burn_lab), ("Burn student image to single SD card", self.burn_student), ("Set SD card to lab image", self.set_lab),
+                      ("Set SD card to student image", self.set_student), ("Update base image", self.update_base_image), ("Create patched image file", self.patch_base_image)]
+        layout = Layout([100], True)
         self.add_layout(layout)
-        self.widgets=[]
-        for label,cb in menu_items:
-            self.widgets.append(layout.add_widget(Button(text=label,add_box=False,on_click=cb,name=label),0))
-        self.fix()            
+        self.widgets = []
+        for label, cb in menu_items:
+            self.widgets.append(layout.add_widget(
+                Button(text=label, add_box=False, on_click=cb, name=label), 0))
+        self.fix()
 
     def burn_lab(self):
         if not os.path.exists("wpa_supplicant.lab.conf"):
-            dlg=PopUpDialog(self.screen,text="You need to create wpa_supplicant.lab.conf before you can burn lab images",buttons=["OK"])
+            dlg = PopUpDialog(
+                self.screen, text="You need to create wpa_supplicant.lab.conf before you can burn lab images", buttons=["OK"])
             self._scene.add_effect(dlg)
         else:
-            self.dataholder.contents_only=False
-            self.dataholder.labimage=True
+            self.dataholder.contents_only = False
+            self.dataholder.labimage = True
             raise NextScene("burn_ready")
-        
+
     def burn_student(self):
-        self.dataholder.contents_only=False
-        self.dataholder.labimage=False
+        self.dataholder.contents_only = False
+        self.dataholder.labimage = False
         raise NextScene("wifi")
-    
+
     def set_lab(self):
         if not os.path.exists("wpa_supplicant.lab.conf"):
-            dlg=PopUpDialog(self.screen,text="You need to create wpa_supplicant.lab.conf before you can burn lab images",buttons=["OK"])
+            dlg = PopUpDialog(
+                self.screen, text="You need to create wpa_supplicant.lab.conf before you can burn lab images", buttons=["OK"])
             self._scene.add_effect(dlg)
         else:
-            self.dataholder.contents_only=True
-            self.dataholder.labimage=True
+            self.dataholder.contents_only = True
+            self.dataholder.labimage = True
             raise NextScene("burn_ready")
-        
+
     def set_student(self):
-        self.dataholder.labimage=False
-        self.dataholder.contents_only=True
+        self.dataholder.labimage = False
+        self.dataholder.contents_only = True
         raise NextScene("wifi")
-    
+
     def update_base_image(self):
+        self.dataholder.patch_image = False
         raise NextScene("update_image")
-    
+
+    def patch_base_image(self):
+        self.dataholder.patch_image = True
+        raise NextScene("update_image")
+
     def cancel(self):
         raise StopApplication("User terminated app")
 
+
 class UpdateImageFrame(EscapeFrame):
-    def __init__(self,screen,dataholder):
-        super().__init__(screen=screen,height=screen.height,width=screen.width)
-        self.dataholder=dataholder
-        self.file_layout=Layout([100],True)
+    def __init__(self, screen, dataholder):
+        super().__init__(screen=screen, height=screen.height, width=screen.width)
+        self.writing = False
+        self.dataholder = dataholder
+        self.info_layout = Layout([100], False)
+        self.add_layout(self.info_layout)
+        self.info_label = self.info_layout.add_widget(
+            Label("Select base image to copy."))
+        self.file_layout = Layout([100], True)
         self.add_layout(self.file_layout)
-        self.file_chooser=FileBrowser(root=".",height=screen.height-3,name="image_file_chooser",file_filter=".*(.xz|.zip|.img)$",on_select=self.copy_image)
-        progress_layout=Layout([100],False)
+        self.file_chooser = FileBrowser(root=".", height=screen.height-4, name="image_file_chooser",
+                                        file_filter=".*(.xz|.zip|.img)$", on_select=self.copy_image)
+        progress_layout = Layout([100], False)
         self.add_layout(progress_layout)
-        self.progress=Label("Progress: "+("."*40))
-        progress_layout.add_widget(self.progress,0)
-        self.file_layout.add_widget(self.file_chooser,0)
+        self.progress = Label("Progress: "+("."*40))
+        progress_layout.add_widget(self.progress, 0)
+        self.file_layout.add_widget(self.file_chooser, 0)
         self.fix()
 
+    def update(self, frame):
+        if self.dataholder.patch_image:
+            if self.writing:
+                self.info_label.text = "Patching image"
+            else:
+                self.info_label.text = "Select image to create patched .img file"
+        else:
+            if self.writing:
+                self.info_label.text = "Getting base image"
+            else:
+                self.info_label.text = "Select image to use as base image"
+
+        super().update(frame)
+
     def copy_image(self):
-        img=self.file_chooser.value
+        self.writing = True
+        img = self.file_chooser.value
+        img = os.path.abspath(img)
+        if self.dataholder.patch_image:
+            target_path = os.path.splitext(
+                img)[0]+".patched.%s.img" % (date.today().strftime("%y%m%d"))
+        else:
+            target_path = "raspios.img"
         self.file_layout.clear_widgets()
         if img.endswith(".img"):
-            if os.path.abspath(img)!=os.path.abspath("raspios.img"):
-                shutil.copyfile(img,"raspios.img")
+            if os.path.abspath(img) != os.path.abspath(target_path):
+                shutil.copyfile(img, target_path)
         elif img.endswith(".zip"):
             # assume biggest file in zip is image
-            f_size=0
-            f_img=""
+            f_size = 0
+            f_img = ""
             with ZipFile(img) as z:
                 for info in z.infolist():
-                    if info.file_size>f_size:
-                        f_size=info.file_size
-                        f_img=info.filename
+                    if info.file_size > f_size:
+                        f_size = info.file_size
+                        f_img = info.filename
                 with z.open(f_img) as zf:
-                    with open("raspios","wb") as outfile:
-                        shutil.copyfileobj(zf,outfile)
+                    with open(target_path, "wb") as outfile:
+                        shutil.copyfileobj(zf, outfile)
         elif img.endswith(".xz"):
-            with open(img,"rb") as infile:
-                with open("raspios.img","wb") as outfile:
-                    dc=LZMADecompressor()
-                    total_len=os.stat(img).st_size
-                    current_len=0
+            with open(img, "rb") as infile:
+                with open(target_path, "wb") as outfile:
+                    dc = LZMADecompressor()
+                    total_len = os.stat(img).st_size
+                    current_len = 0
                     try:
-                        while current_len<total_len:
-                            data=infile.read(1048576) # 16mb at a time
-                            if len(data)>0:
+                        while current_len < total_len:
+                            data = infile.read(1048576)  # 16mb at a time
+                            if len(data) > 0:
                                 outfile.write(dc.decompress(data))
-                            current_len+=len(data)
+                            current_len += len(data)
 
-                            progress=int(40*(current_len/total_len))
-                            new_progress_text="Progress: "+("*"*progress)+("."*(40-progress) + " Unpacking %d/%d MB"%(current_len/1048576,total_len/1048576))
-                            if self.progress.text!=new_progress_text:
-                                self.progress.text=new_progress_text
+                            progress = int(40*(current_len/total_len))
+                            new_progress_text = "Progress: "+("*"*progress)+("."*(
+                                40-progress) + " Unpacking %d/%d MB" % (current_len/1048576, total_len/1048576))
+                            print(new_progress_text)
+                            if self.progress.text != new_progress_text:
+                                self.progress.text = new_progress_text
                                 self.screen.refresh()
                                 self.screen.force_update()
                                 self.screen.draw_next_frame()
-                    except EOFError:                        
+                    except EOFError:
                         pass
         else:
-            dlg=PopUpDialog(self.screen,text=f"Bad image file format {img}",buttons=["OK"],on_close=self.done)
+            dlg = PopUpDialog(self.screen, text=f"Bad image file format {img}", buttons=[
+                              "OK"], on_close=self.done)
             self._scene.add_effect(dlg)
             return
-        dlg=PopUpDialog(self.screen,text=f"Image copied successfully: {img}",buttons=["OK"],on_close=self.done)
+        if self.dataholder.patch_image:
+            # mount as vhd and write contents, then unmount
+            with image_edit.mount_image_fat(target_path) as drive_letter:
+                self.dataholder.labimage=False
+                self.dataholder.wifipw="<YOUR_WIFI_PASSWORD>"
+                self.dataholder.wifiname="<YOUR WIFI NAME>"
+                self.dataholder.uniname="<YOUR_UNI_NAME e.g. pszjm2>@nottingham.ac.uk"
+                self.dataholder.unipw="<YOUR UNI PASSWORD>"
+                self.dataholder.hash=False
+                image_edit.create_wpa_supplicant(self.dataholder)
+                image_edit.add_contents_to_mounted_drive(drive_letter)
+            dlg = PopUpDialog(self.screen, text=f"Image patched successfully: {target_path}", buttons=[
+                              "OK"], on_close=self.done)
+        else:
+            dlg = PopUpDialog(self.screen, text=f"Image copied successfully: {img}", buttons=[
+                              "OK"], on_close=self.done)
         self._scene.add_effect(dlg)
 
-    def done(self,val=None):
+    def done(self, val=None):
         self.reset()
         raise NextScene("menu")
 
 
-
-def main(screen, scene,holder):
+def main(screen, scene, holder):
     # Define your Scenes here
     # 1) Menu to choose what to do
     # 2) Form to input wifi + passwords
     # 3) Burn progress screen
     os.chdir(os.path.dirname(__file__))
-    scenes = [Scene([MenuFrame(screen,holder)],name="menu"),Scene([WifiFrame(screen,holder)],name="wifi"),Scene([BurnReadyFrame(screen,holder)],name="burn_ready"),Scene([BurnFrame(screen,holder)],name="burn"),Scene([BurnDoneFrame(screen,holder)],name="burn_done"),Scene([UpdateImageFrame(screen,holder)],name="update_image")]
+    scenes = [Scene([MenuFrame(screen, holder)], name="menu"), Scene([WifiFrame(screen, holder)], name="wifi"), Scene([BurnReadyFrame(screen, holder)], name="burn_ready"), Scene(
+        [BurnFrame(screen, holder)], name="burn"), Scene([BurnDoneFrame(screen, holder)], name="burn_done"), Scene([UpdateImageFrame(screen, holder)], name="update_image")]
 
     # Run your program
     screen.play(scenes, stop_on_resize=True, start_scene=scene)
 
-# this is just used in curses programs so escape key works
-os.environ.setdefault("ESCDELAY", "25")
-dataholder=DataHolder(burner=ImageBurner())
-last_scene = None
-while True:
-    try:
-        Screen.wrapper(main, arguments=[last_scene,dataholder])
-        sys.exit(0)
-    except ResizeScreenError as e:
-        last_scene = e.scene
+if __name__ == "__main__":
+
+    # this is just used in curses programs so escape key works
+    os.environ.setdefault("ESCDELAY", "25")
+    dataholder = DataHolder(burner=ImageBurner())
+    last_scene = None
+    while True:
+        try:
+            Screen.wrapper(main, arguments=[last_scene, dataholder])
+            sys.exit(0)
+        except ResizeScreenError as e:
+            last_scene = e.scene
