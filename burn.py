@@ -5,7 +5,7 @@ import subprocess
 import os
 import wmi
 
-from image_edit import add_contents_to_card
+from image_edit import add_contents_to_raw_disk
 import rawdisk
 
 class ImageBurner:
@@ -65,7 +65,7 @@ class ImageBurner:
                 self.burns[id]["text"]="Burning image"
                 rawdisk.copy_to_disk(source_image,target_disk,self._burn_progress,id)
             self.burns[id]["text"]="Copying contents"
-            add_contents_to_card(target_disk)
+            add_contents_to_raw_disk(target_disk)
             if not contents_only:
                 self.burns[id]["output"]="Burnt and patched successfully"
             else:

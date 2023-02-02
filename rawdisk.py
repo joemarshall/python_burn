@@ -27,7 +27,7 @@ def copy_to_disk(src_img,target_device,progress_callback,id):
     try:
         out_handle=win32file.CreateFile(target_device,win32file.GENERIC_WRITE,win32file.FILE_SHARE_READ|win32file.FILE_SHARE_WRITE,None,win32file.OPEN_EXISTING,win32file.FILE_ATTRIBUTE_NORMAL,None)
         if out_handle==win32file.INVALID_HANDLE_VALUE:
-            out_handle=win32file.CreateFile(target_device,win32file.GENERIC_WRITE,win32file.didisFILE_SHARE_READ|win32file.FILE_SHARE_WRITE,None,win32file.CREATE_ALWAYS,win32file.FILE_ATTRIBUTE_NORMAL,None)
+            out_handle=win32file.CreateFile(target_device,win32file.GENERIC_WRITE,win32file.FILE_SHARE_READ|win32file.FILE_SHARE_WRITE,None,win32file.CREATE_ALWAYS,win32file.FILE_ATTRIBUTE_NORMAL,None)
         if out_handle==win32file.INVALID_HANDLE_VALUE:
             raise RuntimeError(f"Couldn't open output disk {target_device}")
         geometry=get_drive_geometry(out_handle)

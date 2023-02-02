@@ -182,10 +182,14 @@ class BurnDoneFrame(EscapeFrame):
         # make image
         # start burn (on first drive or on all drives depending on type)
         dataholder.burner.cancel()
+        self.progress_layout.clear_widgets()
+        self.progresses={}
         raise NextScene("burn_ready")
 
     def menu(self):
         # back to menu
+        self.progress_layout.clear_widgets()
+        self.progresses={}
         dataholder.burner.cancel()
         raise NextScene("menu")
 

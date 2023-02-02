@@ -9,35 +9,64 @@ import struct
 import re
 import os
 import stat
-
+from FATtools.Volume import *
+from FATtools.partutils import MBR
+from glob import glob
 
 def hard_delete(redo_function, path, excinfo):
     if os.path.exists(path):
         os.chmod(path, stat.S_IWRITE)
     redo_function(path)
 
+class FatDiskPath:
+      def __init__(self,root,file=None):
+          self.root=root
+          self.file=file
+
+      def __truediv__(self,file):         
+          if self.file==None:
+              return FatDiskPath(self.root,file)
+          else:
+              return FatDiskPath(self.root,self.file+"/"+file)
+
+      def write_text(self,str,newline="\n"):
+          str=str.replace("\r\n",newline)
+          str=str.replace("\n",newline)
+          fp=self.root.create(self.file)
+          fp.write(str.encode('utf-8'))
+          fp.close()
+
+      def read_text(self):
+          fp=self.root.open(self.file)
+          data=fp.read()
+          fp.close()
+          return data.decode('utf-8')
+
+def add_contents_to_raw_disk(device_name):
+    v=vopen(device_name,'r+b','partition0')
+    root=v.open()
+    install_scripts=glob("*",root_dir="./install_scripts")
+    copy_in(["contents"]+install_scripts,root)
+    add_dynamic_files(FatDiskPath(root=root))
+    root.close()
+    vclose(v)
 
 def add_contents_to_card(device_name):
     volume_re = r"\* Volume \d+\s+([A-z]).*"
-    print(device_name)
     disk_num = int(
         re.match(r"\\\\\.\\PHYSICALDRIVE(\d+)", device_name).group(1))
-    print(disk_num)
     process_output = subprocess.run(
         "diskpart.exe", input="select disk %d\nonline disk\nselect partition 1\nlist volume\nexit" % disk_num, capture_output=True, text=True)
-    print("***", process_output.stdout.splitlines())
     drive_letter = None
     for x in process_output.stdout.splitlines():
         match = re.match(volume_re, x)
         if match:
             drive_letter = match.group(1)
             break
-    print(f"Found drive letter straight away: {drive_letter}")
     if drive_letter is None:
         process_output = subprocess.run(
             "diskpart.exe", input="select disk %d\nonline disk\nselect partition 1\nassign\nlist volume\nexit" % disk_num, capture_output=True, text=True)
         if process_output.returncode != 0:
-            print(process_output.returncode)
             raise RuntimeError("Couldn't mount card")
         else:
             lines = process_output.stdout.splitlines()
@@ -52,19 +81,9 @@ def add_contents_to_card(device_name):
     print("Drive letter:", drive_letter)
     add_contents_to_mounted_drive(drive_letter)
 
-
-def add_contents_to_mounted_drive(drive_letter):
-    if os.path.exists(f"{drive_letter}:\\contents"):
-        shutil.rmtree(f"{drive_letter}:\\contents", onerror=hard_delete)
-    if os.path.exists(f"{drive_letter}:\\installscripts"):
-        shutil.rmtree(f"{drive_letter}:\\installscripts", onerror=hard_delete)
-    shutil.copytree(
-        "./contents", f"{drive_letter}:\\contents\\", dirs_exist_ok=True)
-#      shutil.copytree("./contents",f"{drive_letter}:\\\\contents\\",dirs_exist_ok=True,ignore=shutil.ignore_patterns(".git"))
-    shutil.copytree("./installscripts", f"{drive_letter}:\\",
-                    dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
+def add_dynamic_files(drive_path):
     # make command line run install_contents.sh
-    cmd_line = Path(f"{drive_letter}:\\") / "cmdline.txt"
+    cmd_line = drive_path / "cmdline.txt"
     cmd_line_text = cmd_line.read_text().strip()
     cmd_line_text = re.sub(r" systemd.\S+", "", cmd_line_text)
     cmd_line_text += " systemd.run=/boot/install_contents.sh systemd.run_success_action=reboot systemd.run_failure_action=reboot "
@@ -72,7 +91,7 @@ def add_contents_to_mounted_drive(drive_letter):
     print(cmd_line, cmd_line_text)
 
     # enable UART on GPIO pins for debug purposes
-    config_file = Path(f"{drive_letter}:\\config.txt")
+    config_file = drive_path / "config.txt"
     config_txt = config_file.read_text()
     new_config_txt = ""
     found_setting = False
@@ -91,7 +110,7 @@ def add_contents_to_mounted_drive(drive_letter):
         new_config_txt += "enable_uart=1\n"
     config_file.write_text(new_config_txt, newline="\n")
     # write burn date file to /boot
-    burndate_file = Path(f"{drive_letter}:\\burning-date.txt")
+    burndate_file = drive_path / "burning-date.txt"
     burndate_file.write_text("")
     # write image date file to /boot as git date of startup scripts folder
 
@@ -99,9 +118,19 @@ def add_contents_to_mounted_drive(drive_letter):
         ".") / "contents" / "home" / "pi" / "grove-startup-scripts", text=True)
     git_time = datetime.strptime(
         git_date_result.stdout.strip(), "%Y-%m-%d %H:%M:%S %z")
-    imgdate_file = Path(f"{drive_letter}:\\image-date.txt")
+    imgdate_file = drive_path / "image-date.txt"
     imgdate_file.write_text(git_time.strftime("%d%m%Y"))
 
+
+
+def add_contents_to_mounted_drive(drive_letter):
+    drive_path=Path(f"{drive_letter}:\\")
+    if os.path.exists(drive_path / "contents"):
+        shutil.rmtree(drive_path / "contents", onerror=hard_delete)
+    shutil.copytree(
+        "./contents", f"{drive_letter}:\\contents\\", dirs_exist_ok=True)
+    shutil.copytree("./installscripts", f"{drive_letter}:\\",dirs_exist_ok=True)    
+    add_dynamic_files(drive_path)
 
 def create_wpa_supplicant(options):
     conf_file = Path(__file__).parent / "installscripts" / \
@@ -308,17 +337,18 @@ def mount_image_fat(img_file):
 
 
 if __name__ == "__main__":
-    from imager import DataHolder
-    dataholder=DataHolder(burner=None)
-    dataholder.labimage=False
-    dataholder.wifipw="<YOUR_WIFI_PASSWORD>"
-    dataholder.wifiname="<YOUR WIFI NAME>"
-    dataholder.uniname="<YOUR_UNI_NAME e.g. pszjm2>@nottingham.ac.uk"
-    dataholder.unipw="<YOUR UNI PASSWORD>"
-    dataholder.hash=False
-    create_wpa_supplicant(dataholder)
+    add_contents_to_raw_disk("\\\\.\\PHYSICALDRIVE2")
+#     from imager import DataHolder
+#     dataholder=DataHolder(burner=None)
+#     dataholder.labimage=False
+#     dataholder.wifipw="<YOUR_WIFI_PASSWORD>"
+#     dataholder.wifiname="<YOUR WIFI NAME>"
+#     dataholder.uniname="<YOUR_UNI_NAME e.g. pszjm2>@nottingham.ac.uk"
+#     dataholder.unipw="<YOUR UNI PASSWORD>"
+#     dataholder.hash=False
+#     create_wpa_supplicant(dataholder)
 
-    with mount_image_fat("2022-09-22-raspios-bullseye-armhf-lite.img.patched.230201.img") as drive_letter:
-        print(os.listdir("%s:" % drive_letter))
-#        add_contents_to_mounted_drive(drive_letter)
-        print(Path("%s:\\wpa_supplicant.conf" % drive_letter).read_text())
+#     with mount_image_fat("2022-09-22-raspios-bullseye-armhf-lite.img.patched.230201.img") as drive_letter:
+#         print(os.listdir("%s:" % drive_letter))
+# #        add_contents_to_mounted_drive(drive_letter)
+#         print(Path("%s:\\wpa_supplicant.conf" % drive_letter).read_text())
