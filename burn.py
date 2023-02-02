@@ -111,10 +111,14 @@ class ImageBurner:
 
 
 if __name__=="__main__":
+    import time
+
     i=ImageBurner()
     print(i.get_all_disks())
-    # i.burn_image_to_disk(source_image="raspios.img",target_disk="\\\\.\\PHYSICALDRIVE2")
-    # while i.burning():
-    #     print(".")
-    #     print(i.wait())
+    for disk,model in i.get_all_disks():
+        i.burn_image_to_disk(source_image="raspios.img",target_disk=disk)
+    while i.burning():
+        print(".")
+        print(i.get_progress())
+        time.sleep(5)
 

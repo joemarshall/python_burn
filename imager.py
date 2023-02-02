@@ -100,7 +100,7 @@ class BurnReadyFrame(EscapeFrame):
         self.dataholder = dataholder
         layout = Layout([100], True)
         self.add_layout(layout)
-        self.burn_info = layout.add_widget(Label("Burn time"), 0)
+        self.burn_info = layout.add_widget(Label("!",height=15), 0)
         layout2 = Layout([1, 1, 1, 1], False)
         self.add_layout(layout2)
         self.okbutton = layout2.add_widget(Button("OK", self.ok), 0)
@@ -114,20 +114,21 @@ class BurnReadyFrame(EscapeFrame):
 
     def update(self, frame):
         disk_count = 0
-        self.burn_info.text = ""
+        newtext = ""
         for (disk, model) in self.dataholder.burner.get_all_disks():
-            self.burn_info.text += f"{disk}:{model}\n"
+            newtext += f"{disk}:{model}\n"
             disk_count += 1
         if disk_count == 0:
             self.okbutton.disabled = True
-            self.burn_info.text = "You need to insert an sd card before burning can begin"
+            newtext="You need to insert an sd card before burning can begin"
             self.okbutton.text = ""
         else:
-            newtext = f"About to burn {disk_count} sd cards to the following drives:\n" + \
-                self.burn_info.text
+            newtext = f"About to burn {disk_count} sd cards to the following drives:\n" + newtext
             if self.burn_info.text != newtext:
                 self.okbutton.disabled = False
                 self.okbutton.text = "Ok"
+        if self.burn_info.text != newtext:
+            self.burn_info.text=newtext
         super().update(frame)
 
     def ok(self):

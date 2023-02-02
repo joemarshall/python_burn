@@ -24,7 +24,7 @@ def add_contents_to_card(device_name):
         re.match(r"\\\\\.\\PHYSICALDRIVE(\d+)", device_name).group(1))
     print(disk_num)
     process_output = subprocess.run(
-        "diskpart.exe", input="select disk %d\nselect partition 1\nlist volume\nexit" % disk_num, capture_output=True, text=True)
+        "diskpart.exe", input="select disk %d\nonline disk\nselect partition 1\nlist volume\nexit" % disk_num, capture_output=True, text=True)
     print("***", process_output.stdout.splitlines())
     drive_letter = None
     for x in process_output.stdout.splitlines():
@@ -35,7 +35,7 @@ def add_contents_to_card(device_name):
     print(f"Found drive letter straight away: {drive_letter}")
     if drive_letter is None:
         process_output = subprocess.run(
-            "diskpart.exe", input="select disk %d\nselect partition 1\nassign\nlist volume\nexit" % disk_num, capture_output=True, text=True)
+            "diskpart.exe", input="select disk %d\nonline disk\nselect partition 1\nassign\nlist volume\nexit" % disk_num, capture_output=True, text=True)
         if process_output.returncode != 0:
             print(process_output.returncode)
             raise RuntimeError("Couldn't mount card")
