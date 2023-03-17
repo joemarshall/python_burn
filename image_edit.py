@@ -45,7 +45,8 @@ class FatDiskPath:
 def add_contents_to_raw_disk(device_name):
     v=vopen(device_name,'r+b','partition0')
     root=v.open()
-    install_scripts=glob("*",root_dir="./install_scripts")
+    install_scripts=glob("installscripts/*")
+    print(install_scripts)
     copy_in(["contents"]+install_scripts,root)
     add_dynamic_files(FatDiskPath(root=root))
     root.close()

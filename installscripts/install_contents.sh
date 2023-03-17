@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# quit on errordir
+# quit on error
 set +e 
 
 
@@ -9,3 +9,4 @@ cp -rf /boot/contents/* /
 
 # remove our systemd call command line assuming everything above worked
 sed -i 's| systemd.run.*||g' /boot/cmdline.txt
+
