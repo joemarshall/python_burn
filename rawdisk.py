@@ -57,13 +57,6 @@ def copy_to_disk(src_img,target_device,progress_callback,id):
             res, data = win32file.ReadFile(in_handle, read_buffer_size)
             if res!=0:
                 raise IOError(f"Error reading from {src_img}:{res}")
-            if data_written==0:
-                # disk id that will almost certainly be different between multiple burns 
-                # we hack the disk id because windows can't mount multiple disks with the 
-                # same ID
-                disk_id=hash((os.getpid(),threading.get_native_id()))&0xffffffff
-                print("Writing 4 byte disk ID: %x"%disk_id)
-                data=data[0:0x1b8]+struct.pack(">L",disk_id)+data[0x1bc:]
             res,bytes_written=win32file.WriteFile(out_handle,data)
             if res!=0:
                 raise IOError(f"Error writing to {target_device}:{res}")        
