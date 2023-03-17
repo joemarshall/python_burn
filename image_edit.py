@@ -85,6 +85,7 @@ def add_dynamic_files(drive_path):
     # make command line run install_contents.sh
     cmd_line = drive_path / "cmdline.txt"
     cmd_line_text = cmd_line.read_text().strip()
+    cmd_line_text = cmd_line_text.replace(" quiet","")
     cmd_line_text = re.sub(r" systemd.\S+", "", cmd_line_text)
     cmd_line_text += " systemd.run=/boot/install_contents.sh systemd.run_success_action=reboot systemd.run_failure_action=reboot "
     cmd_line.write_text(cmd_line_text, newline="\n")

@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# quit on errordir
 set +e 
 
 

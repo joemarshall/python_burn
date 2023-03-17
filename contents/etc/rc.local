@@ -17,6 +17,6 @@ if [ "$_IP" ]; then
   printf "My IP address is %s\n" "$_IP"
 fi
 cd /home/pi/grove-startup-scripts
-/usr/bin/sudo -u pi /bin/bash /home/pi/grove-startup-scripts/firstrun.sh 
 /sbin/iw wlan0 set power_save off
+/usr/bin/sudo -u pi /bin/bash /home/pi/grove-startup-scripts/firstrun.sh 
 exit 0
