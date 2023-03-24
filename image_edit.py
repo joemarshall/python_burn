@@ -12,6 +12,7 @@ import stat
 from FATtools.Volume import *
 from FATtools.partutils import MBR
 from glob import glob
+from fixcontents import fix_line_endings
 
 def hard_delete(redo_function, path, excinfo):
     if os.path.exists(path):
@@ -43,16 +44,19 @@ class FatDiskPath:
           return data.decode('utf-8')
 
 def add_contents_to_raw_disk(device_name):
+    fix_line_endings("contents")
+    fix_line_endings("installscripts")
     v=vopen(device_name,'r+b','partition0')
     root=v.open()
     install_scripts=glob("installscripts/*")
-    print(install_scripts)
     copy_in(["contents"]+install_scripts,root)
     add_dynamic_files(FatDiskPath(root=root))
     root.close()
     vclose(v)
 
 def add_contents_to_card(device_name):
+    fix_line_endings("contents")
+    fix_line_endings("installscripts")
     volume_re = r"\* Volume \d+\s+([A-z]).*"
     disk_num = int(
         re.match(r"\\\\\.\\PHYSICALDRIVE(\d+)", device_name).group(1))
@@ -229,8 +233,6 @@ def vhd_chs(size):
     return (cylinders, heads, spt)
 
 # in windows you can mount a fat partition from an image if it is a vhd file
-
-
 def add_vhd_footer(img_file):
     # append VHD fixed footer for this file
     img_path = Path(img_file)

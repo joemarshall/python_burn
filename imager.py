@@ -420,15 +420,14 @@ class UpdateImageFrame(EscapeFrame):
             return
         if self.dataholder.patch_image:
             # mount as vhd and write contents, then unmount
-            with image_edit.mount_image_fat(target_path) as drive_letter:
-                self.dataholder.labimage=False
-                self.dataholder.wifipw="<YOUR_WIFI_PASSWORD>"
-                self.dataholder.wifiname="<YOUR WIFI NAME>"
-                self.dataholder.uniname="<YOUR_UNI_NAME e.g. pszjm2>@nottingham.ac.uk"
-                self.dataholder.unipw="<YOUR UNI PASSWORD>"
-                self.dataholder.hash=False
-                image_edit.create_wpa_supplicant(self.dataholder)
-                image_edit.add_contents_to_mounted_drive(drive_letter)
+            self.dataholder.labimage=False
+            self.dataholder.wifipw="<YOUR_WIFI_PASSWORD>"
+            self.dataholder.wifiname="<YOUR WIFI NAME>"
+            self.dataholder.uniname="<YOUR_UNI_NAME e.g. pszjm2>@nottingham.ac.uk"
+            self.dataholder.unipw="<YOUR UNI PASSWORD>"
+            self.dataholder.hash=False
+            image_edit.create_wpa_supplicant(self.dataholder)
+            image_edit.add_contents_to_raw_disk(target_path)
             dlg = PopUpDialog(self.screen, text=f"Image patched successfully: {target_path}", buttons=[
                               "OK"], on_close=self.done)
         else:
