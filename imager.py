@@ -134,6 +134,7 @@ class BurnReadyFrame(EscapeFrame):
     def ok(self):
         # make image
         # start burn (on first drive or on all drives depending on type)
+        self.dataholder.burner.clear()
         image_edit.create_wpa_supplicant(self.dataholder)
         for (disk, model) in self.dataholder.burner.get_all_disks():
             self.dataholder.burner.burn_image_to_disk(

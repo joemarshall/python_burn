@@ -109,6 +109,9 @@ class ImageBurner:
                     ended=False
         self.burns={}
 
+    def clear(self):
+        self.burns={}
+
 
 if __name__=="__main__":
     import time
