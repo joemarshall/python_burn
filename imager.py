@@ -196,6 +196,7 @@ class BurnDoneFrame(EscapeFrame):
 
     def cancel(self):
         # back to menu
+        self.progress_layout.clear_widgets()
         dataholder.burner.cancel()
         raise NextScene("menu")
 
@@ -258,6 +259,7 @@ class BurnFrame(EscapeFrame):
                 self.screen.force_update()
 #                self.progresses[dev_id].refresh()
         if not burns_left:
+            self.progress_layout.clear_widgets()
             self.progresses.clear()
             raise NextScene("burn_done")
         super().update(frame)
