@@ -82,7 +82,7 @@ class WifiFrame(EscapeFrame):
         self.save(validate=True)
         for x in self.data.keys():
             setattr(self.dataholder, x, self.data[x])
-        raise NextScene("burn")
+        raise NextScene("burn_ready")
 
     def cancel(self):
         raise NextScene("menu")
