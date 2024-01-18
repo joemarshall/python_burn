@@ -16,7 +16,22 @@ _IP=$(hostname -I) || true
 if [ "$_IP" ]; then
   printf "My IP address is %s\n" "$_IP"
 fi
+# boot partition can be at /boot or /boot/firmware
+if [ -f /boot/firmware/init_task.sh ]; then
+  cd /boot/firmware
+  /usr/bin/bash /boot/firmware/init_task.sh
+  /usr/bin/mount -o remount,rw,fmask=0777,dmask=0777 /boot/firmware
+  rm /boot/firmware/init_task.sh
+  /usr/bin/mount -o remount,ro /boot/firmware
+fi
+if [ -f /boot/init_task.sh ]; then
+  cd /boot
+  /usr/bin/bash /boot/init_task.sh
+  /usr/bin/mount -o remount,rw,fmask=0777,dmask=0777 /boot
+  rm /boot/init_task.sh
+  /usr/bin/mount -o remount,ro /boot
+fi
 cd /home/pi/grove-startup-scripts
 /sbin/iw wlan0 set power_save off
-/usr/bin/sudo -u pi /bin/bash /home/pi/grove-startup-scripts/firstrun.sh 
+/usr/bin/sudo -u pi /bin/bash /home/pi/grove-startup-scripts/firstrun.sh &
 exit 0

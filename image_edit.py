@@ -14,6 +14,9 @@ from FATtools.partutils import MBR
 from glob import glob
 from fixcontents import fix_line_endings
 
+# if this is false, we're using wpa_supplicant.conf files
+USE_NETWORK_MANAGER = True
+
 def hard_delete(redo_function, path, excinfo):
     if os.path.exists(path):
         os.chmod(path, stat.S_IWRITE)
@@ -86,34 +89,65 @@ def add_contents_to_card(device_name):
     print("Drive letter:", drive_letter)
     add_contents_to_mounted_drive(drive_letter)
 
+def _add_setting(key,value,config_txt):
+    new_config_txt=""
+    found_setting=False
+    commented_line_match=f"{key}={value}"
+    for line in config_txt.splitlines():
+        comment_pos=line.find("#")
+
+        if comment_pos>=0:
+            line_no_comment = line[:comment_pos]
+            # uncomment out setting if it is there
+            if len(line_no_comment.strip()) == 0 and line[comment_pos+1:].strip() == commented_line_match:
+                new_config_txt += commented_line_match +"\n"
+                found_setting=True
+                continue
+        else:
+            line_no_comment = line
+
+        line_split=line_no_comment.split("=")
+        if len(line_split)==2:
+            k = line_split[0].strip()
+            v = line_split[1].strip()
+            if  k == key:
+                if v == value:
+                    found_setting = True
+                else:
+                    # skip wrong setting
+                    continue
+        elif len(line_split)==3:
+            k= "=".join(line_split[0:2]).strip()
+            v = line_split[2].strip()
+            if  k == key:
+                if v == value:
+                    found_setting = True
+                else:
+                    # skip wrong setting
+                    continue
+        new_config_txt += line+"\n"
+
+    if not found_setting:
+        new_config_txt += f"{key}={value}\n"
+    return new_config_txt
+
+
 def add_dynamic_files(drive_path):
     # make command line run install_contents.sh
     cmd_line = drive_path / "cmdline.txt"
     cmd_line_text = cmd_line.read_text().strip()
     cmd_line_text = cmd_line_text.replace(" quiet","")
     cmd_line_text = re.sub(r" systemd.\S+", "", cmd_line_text)
-    cmd_line_text += " systemd.run=/boot/install_contents.sh systemd.run_success_action=reboot systemd.run_failure_action=reboot "
+    cmd_line_text += " systemd.run=/boot/firmware/install_contents.sh systemd.run_success_action=reboot systemd.run_failure_action=reboot "
     cmd_line.write_text(cmd_line_text, newline="\n")
     print(cmd_line, cmd_line_text)
 
     # enable UART on GPIO pins for debug purposes
+    # and i2c for grovepi
     config_file = drive_path / "config.txt"
     config_txt = config_file.read_text()
-    new_config_txt = ""
-    found_setting = False
-    for line in config_txt.splitlines():
-        match = re.match("\s*(\w+)\s*=([^#]*)", line)
-        if match:
-            k, v = match.groups()
-            if k == "enable_uart":
-                if v == "1":
-                    found_setting = True
-                else:
-                    # skip bad setting
-                    continue
-        new_config_txt += line+"\n"
-    if not found_setting:
-        new_config_txt += "enable_uart=1\n"
+    new_config_txt = _add_setting("enable_uart","1",config_txt)
+    new_config_txt = _add_setting("dtparam=i2c_arm","on",new_config_txt)
     config_file.write_text(new_config_txt, newline="\n")
     # write burn date file to /boot
     burndate_file = drive_path / "burning-date.txt"
@@ -138,16 +172,51 @@ def add_contents_to_mounted_drive(drive_letter):
     shutil.copytree("./installscripts", f"{drive_letter}:\\",dirs_exist_ok=True)    
     add_dynamic_files(drive_path)
 
+def create_init_files(options):
+    if options.labimage == True:
+        shutil.copyfile("userconf.lab.conf", "installscripts/userconf.txt")
+    else:
+        shutil.copyfile("userconf.student.conf", "installscripts/userconf.txt")
+
+    task_text = """#!/bin/bash
+
+SCRIPT_PATH=$(dirname "$0")
+cp -rf $SCRIPT_PATH/contents/home/* /home
+"""
+    task_script = Path(__file__).parent / "installscripts" / "init_task.sh"
+    
+    if USE_NETWORK_MANAGER:
+        task_text+= create_network_manager_connections(options)
+    else:
+        task_text+= create_wpa_supplicant(options)
+
+    task_text+="\nnmcli conn reload\n"
+    task_script.write_text(task_text,newline="\n")
+
+def create_network_manager_connections(options):
+    if options.labimage == True:
+        conf_file = Path(__file__).parent / "networks.lab.conf"
+        return conf_file.read_text()
+    else:
+        return f"""
+# mrthotspot (for all devices to connect to phone network)        
+bash create_networks.sh MRTHotspot MRTHotspot WPA
+# eduroam
+bash create_networks.sh {options.uniname} {options.unipw} EDUROAM
+# personal network
+bash create_networks.sh {options.wifiname} {options.wifipw} WPA
+"""
+
+    
+
 def create_wpa_supplicant(options):
     conf_file = Path(__file__).parent / "installscripts" / \
         "wpa_supplicant.conf"
     conf_file.parent.mkdir(exist_ok=True, parents=True)
 
     if options.labimage == True:
-        shutil.copyfile("userconf.lab.conf", "installscripts/userconf.txt")
         shutil.copyfile("wpa_supplicant.lab.conf", conf_file)
     else:
-        shutil.copyfile("userconf.student.conf", "installscripts/userconf.txt")
         if options.hash:
             unipw = "hash:"+lmhash.hash(options.unipw)
         else:
@@ -187,6 +256,7 @@ group=CCMP TKIP
 psk="%s"
 }
 """ % (options.uniname, unipw, options.wifiname, options.wifipw), newline="\n")
+    return "\ncp $SCRIPT_PATH/wpa_supplicant.conf /etc/wpa_supplicant/wpa_supplicant.conf\n"
 
 
 def pack_4(value):

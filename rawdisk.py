@@ -107,4 +107,12 @@ def get_drive_geometry(handle):
 
 
 if __name__=="__main__":
+    import time,sys
     print(get_disk_volumes("\\\\.\\PHYSICALDRIVE2"))
+    def _burn_progress(*argc,**argv):
+        print(argc,argv)
+        return True
+    if len(sys.argv)>1:
+        print("Writing img")
+    time.sleep(5)
+    copy_to_disk(sys.argv[1],"\\\\.\\PHYSICALDRIVE2",_burn_progress,1)

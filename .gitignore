@@ -6,6 +6,7 @@ __pycache__/
 # disk images
 *.img
 *.xz
+*.zip
 
 # C extensions
 *.so
@@ -163,10 +164,12 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# lab wifi settings and user passwords
+# lab wifi settings and user passwords and generated files
 wpa_supplicant.lab.conf
 contents/etc/wpa_supplicant/wpa_supplicant.conf
 contents/boot/userconf
 installscripts/wpa_supplicant.conf
+installscripts/init_task.sh
 userconf.lab.conf
 installscripts/userconf*
+networks.lab.conf
