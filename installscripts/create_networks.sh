@@ -5,6 +5,7 @@ SSID=$1
 PASSWORD=$2
 PW_TYPE=$3
 
+
 if [ ${PW_TYPE} == 'EDUROAM' ]; then
 USERNAME=${SSID}
 SSID=eduroam
@@ -35,6 +36,7 @@ EOF
 
 if [ ${PW_TYPE} == 'WEP' ]; then
 cat <<- EOF >>${CONNFILE}
+[wifi-security]
 key-mgmt=none
 wep-key0=${PASSWORD}
 wep-tx-keyidx=0
