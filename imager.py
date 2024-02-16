@@ -115,8 +115,25 @@ class BurnReadyFrame(EscapeFrame):
     def update(self, frame):
         disk_count = 0
         newtext = ""
-        for (disk, model) in self.dataholder.burner.get_all_disks():
-            newtext += f"{disk}:{model}\n"
+        all_disks=self.dataholder.burner.get_all_disks()
+        # enumerate them as if they are on one hub
+        # in order: 1,2, subhub (1,2,3,4), subhub (1,2,3,4)
+        # i.e. lower levels go first, then higher depths
+        # this is hardcoded for our particular 10 port hub
+        LOCATION_ORDER=[1,2,(3,4,5,6),(7,8,9,10)]
+
+
+        location_len_max = max(len(location) for _,_,location in all_disks)
+
+        for (disk, model,location) in all_disks:
+            if len(location)==location_len_max-1:
+                # main hub port, disk num = x
+                location_index=location[-1]
+            elif len(location)== location_len_max:
+                # sub-hub port, disk num = (x1 - 2)*4,y
+                location_index=location[-1]+2+(location[-2]-3)*4
+
+            newtext += f"{disk}:{model} @ Port {location_index}\n"
             disk_count += 1
         if disk_count == 0:
             self.okbutton.disabled = True
@@ -136,7 +153,7 @@ class BurnReadyFrame(EscapeFrame):
         # start burn (on first drive or on all drives depending on type)
         self.dataholder.burner.clear()
         image_edit.create_init_files(self.dataholder)
-        for (disk, model) in self.dataholder.burner.get_all_disks():
+        for (disk, model,location) in self.dataholder.burner.get_all_disks():
             self.dataholder.burner.burn_image_to_disk(
                 source_image="raspios.img", target_disk=disk, contents_only=self.dataholder.contents_only)
         raise NextScene("burn")

@@ -41,13 +41,49 @@ class ImageBurner:
     def burning(self):
         return (len(self.burns)>0)
 
+    def _get_disk_path(self,wm,deviceID):
+        for x in wm.query(f"select * from Win32_PnPEntity where PNPDeviceID='{deviceID}'"):
+            props,rval=x.GetDeviceProperties(["DEVPKEY_Device_LocationPaths","DEVPKEY_Device_Parent"])
+            if rval==0:
+                if props[0].type!=0:
+                    return props[0].data
+                if props[1].type!=0:
+                    return self._get_disk_path(wm,props[1].data)
+        return None
+
+    def _rewrite_location(self,location):
+        for path in location:
+            parts=re.findall(r"(\w+)\((\d+)\)(?#|$)",path)
+            if "USBROOT" in [x for x,y in parts]:``
+                location=None
+                for name,part_num in parts:
+                    if name=="USBROOT":
+                        location=[int(part_num)]
+                    elif location is not None:
+                        location.append(int(part_num))
+                return location
+        return []
+
     def get_all_disks(self):
         drive_list=[]
         wm = wmi.WMI ()
         for disk in wm.Win32_DiskDrive():
             # 7 = removable drive
-            if 7 in disk.Capabilities:
-                drive_list.append((disk.DeviceID,disk.Model))
+            if disk.Capabilities is not None and 7 in disk.Capabilities:
+                # location
+                location="Unknown"
+                print(disk)
+
+                for x in disk.associators(): # CreationClassName='Win32_PNPEntity'
+                    print(x)
+                    if x.CreationClassName=="Win32_PnPEntity":
+                        l=self._get_disk_path(wm,x.DeviceID)
+                        if l!=None:
+                            location=self._rewrite_location(l)                            
+                drive_list.append((disk.DeviceID,disk.Model,location))
+
+        # find where it is connected
+            
         return drive_list
 
     def _burn_progress(self,current,total,id):
@@ -118,10 +154,10 @@ if __name__=="__main__":
 
     i=ImageBurner()
     print(i.get_all_disks())
-    for disk,model in i.get_all_disks():
-        i.burn_image_to_disk(source_image="raspios.img",target_disk=disk)
-    while i.burning():
-        print(".")
-        print(i.get_progress())
-        time.sleep(5)
+    # for disk,model in i.get_all_disks():
+    #     i.burn_image_to_disk(source_image="raspios.img",target_disk=disk)
+    # while i.burning():
+    #     print(".")
+    #     print(i.get_progress())
+    #     time.sleep(5)
 
