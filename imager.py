@@ -122,8 +122,8 @@ class BurnReadyFrame(EscapeFrame):
         # this is hardcoded for our particular 10 port hub
         LOCATION_ORDER=[1,2,(3,4,5,6),(7,8,9,10)]
 
-
-        location_len_max = max(len(location) for _,_,location in all_disks)
+        if len(all_disks)!=0:
+            location_len_max = max(len(location) for _,_,location in all_disks)
 
         for (disk, model,location) in all_disks:
             if len(location)==location_len_max-1:
