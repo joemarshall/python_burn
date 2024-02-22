@@ -54,7 +54,7 @@ class ImageBurner:
     def _rewrite_location(self,location):
         for path in location:
             parts=re.findall(r"(\w+)\((\d+)\)(?#|$)",path)
-            if "USBROOT" in [x for x,y in parts]:``
+            if "USBROOT" in [x for x,y in parts]:
                 location=None
                 for name,part_num in parts:
                     if name=="USBROOT":
