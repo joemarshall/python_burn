@@ -191,7 +191,7 @@ cp -rf $SCRIPT_PATH/contents/home/* /home
         task_text+= create_wpa_supplicant(options)
 
     task_text+="\nnmcli conn reload\n"
-    task_text+="\chpasswd -e < /boot/firmware/userconf.txt\n"
+    task_text+="chpasswd -e < /boot/firmware/userconf.txt\n"
     task_script.write_text(task_text,newline="\n")
 
 def create_network_manager_connections(options):
