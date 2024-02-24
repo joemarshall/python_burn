@@ -8,6 +8,7 @@ from asciimatics.exceptions import ResizeScreenError, NextScene, StopApplication
 
 from dataclasses import dataclass
 from burn import ImageBurner
+from rawdisk import copy_from_disk
 import image_edit
 import os
 from pathlib import Path
@@ -30,7 +31,7 @@ class DataHolder:
     unipw: str = ""
     patch_image: bool = False  # used when copying image and patching it
     hash:bool = True # hash uni password
-
+    prepatched_image = False # if this is true, use raspios_prepatched.img
 
 class EscapeFrame(Frame):
     def process_event(self, event):
@@ -154,8 +155,12 @@ class BurnReadyFrame(EscapeFrame):
         self.dataholder.burner.clear()
         image_edit.create_init_files(self.dataholder)
         for (disk, model,location) in self.dataholder.burner.get_all_disks():
+            if self.dataholder.prepatched_image:
+                source = "raspios_prepatched.img"
+            else:
+                source = "raspios.img"
             self.dataholder.burner.burn_image_to_disk(
-                source_image="raspios.img", target_disk=disk, contents_only=self.dataholder.contents_only)
+                source_image=source, target_disk=disk, contents_only=self.dataholder.contents_only,prepatched=self.dataholder.prepatched_image)
         raise NextScene("burn")
 
     def cancel(self):
@@ -301,7 +306,7 @@ class MenuFrame(EscapeFrame):
         super().__init__(screen=screen, height=screen.height, width=screen.width)
         self.dataholder = dataholder
         menu_items = [("Burn lab image to SD card(s)", self.burn_lab), ("Burn student image to single SD card", self.burn_student), ("Set SD card to lab image", self.set_lab),
-                      ("Set SD card to student image", self.set_student), ("Update base image", self.update_base_image), ("Create patched image file", self.patch_base_image)]
+                      ("Set SD card to student image", self.set_student), ("Update base image", self.update_base_image), ("Create patched image file", self.patch_base_image),("Capture prepatched image", self.capture_prepatched_image),("Burn prepatched image", self.burn_prepatched_image)]
         layout = Layout([100], True)
         self.add_layout(layout)
         self.widgets = []
@@ -348,8 +353,52 @@ class MenuFrame(EscapeFrame):
         self.dataholder.patch_image = True
         raise NextScene("update_image")
 
+    def burn_prepatched_image(self):
+        self.dataholder.prepatched_image=True
+        self.dataholder.labimage = True
+        raise NextScene("burn_ready")
+
+    def capture_prepatched_image(self):
+        raise NextScene("capture_prepatched")
+
     def cancel(self):
         raise StopApplication("User terminated app")
+
+class CapturePrepatchedFrame(EscapeFrame):
+    def __init__(self, screen, dataholder):
+        super().__init__(screen=screen, height=screen.height, width=screen.width)
+        self.dataholder = dataholder
+        progress_layout = Layout([100], False)
+        self.add_layout(progress_layout)
+        self.progress = Label("Progress: "+("."*40))
+        progress_layout.add_widget(self.progress, 0)
+        self.fix()
+
+    def update(self, frame):
+        print("WOO")
+        self.capture_image()
+        super().update(frame)
+
+    def _burn_progress(self,data_written,in_size,id):
+        progress=int(40*data_written/in_size)
+        new_progress_text = "Progress: "+("*"*progress)+("."*(
+            40-progress) + "Capturing image %d/%d MB" % (data_written/1048576, in_size/1048576))
+        if self.progress.text != new_progress_text:
+            self.progress.text = new_progress_text        
+            self.screen.refresh()
+            self.screen.force_update()
+            self.screen.draw_next_frame()                
+
+    def capture_image(self):
+        copy_from_disk("\\\\.\\PHYSICALDRIVE2","raspios_prepatched.img",self._burn_progress,1)
+        dlg = PopUpDialog(self.screen, text=f"Image captured successfully", buttons=[
+                            "OK"], on_close=self.done)
+        
+    def done(self, val=None):
+        self.reset()
+        raise NextScene("menu")
+
+  
 
 
 class UpdateImageFrame(EscapeFrame):
@@ -469,7 +518,7 @@ def main(screen, scene, holder):
     # 3) Burn progress screen
     os.chdir(os.path.dirname(__file__))
     scenes = [Scene([MenuFrame(screen, holder)], name="menu"), Scene([WifiFrame(screen, holder)], name="wifi"), Scene([BurnReadyFrame(screen, holder)], name="burn_ready"), Scene(
-        [BurnFrame(screen, holder)], name="burn"), Scene([BurnDoneFrame(screen, holder)], name="burn_done"), Scene([UpdateImageFrame(screen, holder)], name="update_image")]
+        [BurnFrame(screen, holder)], name="burn"), Scene([BurnDoneFrame(screen, holder)], name="burn_done"), Scene([UpdateImageFrame(screen, holder)], name="update_image"),Scene([CapturePrepatchedFrame(screen, holder)], name="capture_prepatched")]
 
     # Run your program
     screen.play(scenes, stop_on_resize=True, start_scene=scene)
