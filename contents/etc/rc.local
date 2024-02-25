@@ -32,5 +32,5 @@ if [ -f /boot/init_task.sh ]; then
   /usr/bin/mount -o remount,ro /boot
 fi
 /sbin/iw dev wlan0 set power_save off || true
-/usr/bin/sudo -u pi /bin/bash /home/pi/grove-startup-scripts/firstrun.sh &
+/usr/bin/sudo -u pi /bin/bash /home/pi/grove-startup-scripts/firstrun.sh
 exit 0

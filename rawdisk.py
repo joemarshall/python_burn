@@ -9,7 +9,7 @@ import time
 import threading
 from dataclasses import dataclass
 
-BUFFER_SIZE = 128 * 1024*1024 # 128mb buffer
+BUFFER_SIZE = 32 * 1024*1024 # 32mb buffer
 
 def get_disk_volumes(target_device):
     pythoncom.CoInitialize()
