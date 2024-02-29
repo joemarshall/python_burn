@@ -54,7 +54,7 @@ class ImageBurner:
             if props[0].type!=0:
                 return props[0].data
             if props[1].type!=0:
-                for x in wm.query(f"select * from Win32_PnPEntity where PNPDeviceID='{props[1].data}'"):
+                for x in wm.query(f"select PNPDeviceID from Win32_PnPEntity WHERE PNPDeviceID='{props[1].data}'"):
                     return self._get_disk_path(wm,x)
         return None
 
@@ -73,28 +73,65 @@ class ImageBurner:
 
     def disk_scan_thread_fn(self):
         pythoncom.CoInitializeEx(0)
-        while True:
-            self.rescan_disks()
-
-    def rescan_disks(self):
-        drive_list=[]
         wm = wmi.WMI ()
-        for disk in wm.Win32_DiskDrive():
-            # 7 = removable drive
-            if disk.Capabilities is not None and 7 in disk.Capabilities:
-                if disk.Signature in self.location_cache:
-                    location = self.location_cache[disk.Signature]
-                else:
-                    location="Unknown"
-                    for x in disk.associators(): # CreationClassName='Win32_PNPEntity'
-                        if x.CreationClassName=="Win32_PnPEntity":
-                            l=self._get_disk_path(wm,x)
-                            if l!=None:
-                                location=self._rewrite_location(l)                            
-                                self.location_cache[disk.Signature]=location
-                                break
-                drive_list.append((disk.DeviceID,disk.Model,location))
-        self.drive_list=drive_list
+        raw_wql = "SELECT * FROM __InstanceOperationEvent WITHIN 2 WHERE TargetInstance ISA 'Win32_DiskDrive'"
+        new_drive=None
+        while True:
+            print("rescan")
+            self.rescan_disks(wm,new_drive=new_drive)
+            target_instance=None
+            watcher = wm.watch_for (raw_wql=raw_wql,wmi_class="__InstanceOperationEvent")
+            try:
+                while True:
+                    change_event=watcher(30000) # full scan every 30 seconds by default
+                    if change_event.event_type=='creation':
+                        # new drive
+                        new_drive=change_event                    
+                        print(f"added:{change_event.DeviceID}")
+                        break
+                    elif change_event.event_type=='deletion':
+                        removed_device=change_event.DeviceID
+                        print(f"removed: {removed_device}")
+                        # drive removed
+                        drive_list=[]
+                        for x in self.drive_list:
+                            if x[0]!=removed_device:
+                                drive_list.append(x)
+                        self.drive_list=drive_list                    
+            except wmi.x_wmi_timed_out as ex:
+                pass
+
+    def new_drive(self,wm,disk):
+        # 7 = removable drive
+        if disk.Capabilities is not None and 7 in disk.Capabilities:
+
+            if disk.Signature in self.location_cache:
+                location = self.location_cache[disk.Signature]
+            else:
+                location="Unknown"
+                for x in disk.associators(wmi_result_class="Win32_PnPEntity"):
+                    l=self._get_disk_path(wm,x)
+                    if l!=None:
+                        location=self._rewrite_location(l)                            
+                        self.location_cache[disk.Signature]=location
+                        break
+            return (disk.DeviceID,disk.Model,location)
+        return None
+
+
+    def rescan_disks(self,wm,new_drive):
+        if new_drive==None:
+            drive_list=[]
+            for disk in wm.query(f"select Capabilities,DeviceID,Model,Signature from Win32_DiskDrive"):
+                disk_info=self.new_drive(wm,disk)
+                if disk_info is not None:
+                    drive_list.append(disk_info)
+            self.drive_list=drive_list
+        else:
+            disk_info=self.new_drive(wm,new_drive)
+            if disk_info is not None:
+                self.drive_list.append(disk_info)
+        print("scanned:",self.drive_list)
 
     def get_all_disks(self):
         return self.drive_list
@@ -168,9 +205,9 @@ if __name__=="__main__":
 
     i=ImageBurner()
     import timeit
-    time.sleep(5)
-    print(timeit.timeit("i.get_all_disks()",number=20,globals=locals())/20)
-    print(i.get_all_disks())
+    for c in range(100):
+        print("GD:",i.get_all_disks())
+        time.sleep(2)
     # for disk,model in i.get_all_disks():
     #     i.burn_image_to_disk(source_image="raspios.img",target_disk=disk)
     # while i.burning():
