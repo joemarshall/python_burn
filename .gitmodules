@@ -1,3 +1,6 @@
 [submodule "contents/home/pi/grove-startup-scripts"]
 	path = contents/home/pi/grove-startup-scripts
 	url = https://github.com/joemarshall/grove-startup-scripts.git
+[submodule "PiShrink"]
+	path = PiShrink
+	url = https://github.com/Drewsif/PiShrink/

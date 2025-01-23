@@ -46,14 +46,15 @@ class FatDiskPath:
           fp.close()
           return data.decode('utf-8')
 
-def add_contents_to_raw_disk(device_name):
+def add_contents_to_raw_disk(device_name,prepatched):
     fix_line_endings("contents")
     fix_line_endings("installscripts")
     v=vopen(device_name,'r+b','partition0')
     root=v.open()
     install_scripts=glob("installscripts/*")
     copy_in(["contents"]+install_scripts,root)
-    add_dynamic_files(FatDiskPath(root=root))
+    if not prepatched:
+        add_dynamic_files(FatDiskPath(root=root))
     root.close()
     vclose(v)
 
@@ -182,6 +183,8 @@ def create_init_files(options):
 
 SCRIPT_PATH=$(dirname "$0")
 cp -rf $SCRIPT_PATH/contents/home/* /home
+
+iw reg set GB
 """
     task_script = Path(__file__).parent / "installscripts" / "init_task.sh"
     
@@ -193,6 +196,10 @@ cp -rf $SCRIPT_PATH/contents/home/* /home
     task_text+="\nnmcli conn reload\n"
     # change user password (this fails on new card because raspberry pi init does it)
     task_text+="chpasswd -e < /boot/firmware/userconf.txt || true\n"
+    if options.prepatched_image:
+        # regenerate ssh host keys on first boot of prepatched
+        # image
+        task_text+="\nrm /etc/ssh/ssh_host*\nsudo ssh-keygen -A\n"
     task_script.write_text(task_text,newline="\n")
 
 def create_network_manager_connections(options):
@@ -201,12 +208,13 @@ def create_network_manager_connections(options):
         return conf_file.read_text()
     else:
         return f"""
+rm -f /etc/NetworkManager/system-connections/*.nmconnection || true
 # mrthotspot (for all devices to connect to phone network)        
 bash create_networks.sh MRTHotspot MRTHotspot WPA
 # eduroam
-bash create_networks.sh {options.uniname} {options.unipw} EDUROAM
+bash create_networks.sh '{options.uniname}' '{options.unipw}' EDUROAM
 # personal network
-bash create_networks.sh {options.wifiname} {options.wifipw} WPA
+bash create_networks.sh '{options.wifiname}' '{options.wifipw}' WPA
 """
 
     

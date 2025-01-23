@@ -15,7 +15,7 @@ class ImageBurner:
         self.next_id=1
         self.event=threading.Event()
         self.location_cache={}
-        self.drive_list=[]
+        self.drive_list={}
         self.drive_scan_thread=threading.Thread(target=self.disk_scan_thread_fn)
         self.drive_scan_thread.daemon=True # we don't care if it is killed
         self.drive_scan_thread.start()
@@ -92,12 +92,8 @@ class ImageBurner:
                     elif change_event.event_type=='deletion':
                         removed_device=change_event.DeviceID
                         print(f"removed: {removed_device}")
-                        # drive removed
-                        drive_list=[]
-                        for x in self.drive_list:
-                            if x[0]!=removed_device:
-                                drive_list.append(x)
-                        self.drive_list=drive_list                    
+                        if removed_device in self.drive_list:
+                            del self.drive_list[removed_device]
             except wmi.x_wmi_timed_out as ex:
                 pass
 
@@ -121,20 +117,20 @@ class ImageBurner:
 
     def rescan_disks(self,wm,new_drive):
         if new_drive==None:
-            drive_list=[]
+            drive_list={}
             for disk in wm.query(f"select Capabilities,DeviceID,Model,Signature from Win32_DiskDrive"):
                 disk_info=self.new_drive(wm,disk)
                 if disk_info is not None:
-                    drive_list.append(disk_info)
+                    drive_list[disk_info[0]]=disk_info
             self.drive_list=drive_list
         else:
             disk_info=self.new_drive(wm,new_drive)
             if disk_info is not None:
-                self.drive_list.append(disk_info)
+                self.drive_list[disk_info[0]]=disk_info
         print("scanned:",self.drive_list)
 
     def get_all_disks(self):
-        return self.drive_list
+        return self.drive_list.values()
 
     def _burn_progress(self,current,total,id):
         if id in self.burns:
@@ -151,8 +147,7 @@ class ImageBurner:
                 self.burns[id]["text"]="Burning image"
                 rawdisk.copy_to_disk(source_image,target_disk,self._burn_progress,id)
             self.burns[id]["text"]="Copying contents"
-            if not prepatched:
-                add_contents_to_raw_disk(target_disk)
+            add_contents_to_raw_disk(target_disk,prepatched)
             if not contents_only:
                 self.burns[id]["output"]="Burnt and patched successfully"
             else:

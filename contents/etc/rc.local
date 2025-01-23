@@ -32,5 +32,7 @@ if [ -f /boot/init_task.sh ]; then
   /usr/bin/mount -o remount,ro /boot
 fi
 /sbin/iw dev wlan0 set power_save off || true
+/usr/bin/raspi-config nonint do_wifi_country GB
+/usr/sbin/rfkill unblock wlan
 /usr/bin/sudo -u pi /bin/bash /home/pi/grove-startup-scripts/firstrun.sh
 exit 0

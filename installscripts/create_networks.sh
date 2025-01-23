@@ -55,18 +55,19 @@ fi
 if [ ${PW_TYPE} == 'EDUROAM' ]; then
 cat <<- EOF >>${CONNFILE}
 [wifi-security]
+group=ccmp;tkip;
 key-mgmt=wpa-eap
+pairwise=ccmp;
+proto=rsn;
 
 [802-1x]
-eap=peap;
+altsubject-matches=DNS:radius.nottingham.ac.uk;
+ca-cert=/etc/eduroam.pem
 identity=${USERNAME}@nottingham.ac.uk
-anonymous-identity=anonymous@nottingham.ac.uk
-domain-suffix-match=radius.nottingham.ac.uk	
-#ca-cert=/home/joe/.cert/corp.crt
-phase1-peapver=1
-phase2-auth=mschapv2
-password-flags=2
 password=${PASSWORD}
+eap=peap;
+phase2-auth=mschapv2
+
 EOF
 fi
 

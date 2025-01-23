@@ -102,6 +102,7 @@ def copy_from_disk(src_device,target_img,progress_callback,id):
                                 None,12))[1]
         volumes=[]
         for x in get_disk_volumes(src_device):
+            print("Try open volume:",x)
             volume_handle=win32file.CreateFile(x,win32file.GENERIC_READ,win32file.FILE_SHARE_READ|win32file.FILE_SHARE_WRITE,None,win32file.OPEN_EXISTING,win32file.FILE_ATTRIBUTE_NORMAL,None)
             volumes.append(volume_handle)
             print(x,src_device,volume_handle)
